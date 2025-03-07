@@ -73,30 +73,39 @@ class _FileDetailPageState extends State<FileDetailPage> {
       messages[index]["content"] = _editableController.text;
       messages[index]["editable"] = false;
     });
-
+    _botReply("Generating question...");
     // 发送用户确认的文本给 OpenAI API
-    String question = await openAIService.generateReflectiveQuestion(_editableController.text);
+    String question = await openAIService.initialGeneration(_editableController.text);
 
     setState(() {
+      messages.removeLast();
       messages.add({"role": "bot", "content": question, "retry": true});
     });
   }
 
-  void _retryGeneratingQuestion(int index) async {
+  void _retryGeneration(int index) async {
     String? userText = messages[index]["userText"];
     if (userText == null) return;
 
     // 重新请求新的问题
-    String newQuestion = await openAIService.regenerateReflectiveQuestion(userText);
+    String newQuestion = await openAIService.regenerate(userText);
 
     setState(() {
       messages[index]["content"] = newQuestion;
     });
   }
 
+  void _followUpGeneration() async {}
+
   void _botReply(String text) {
     setState(() {
       messages.add({"role": "bot", "content": text});
+    });
+  }
+
+  void _userReply(String text) {
+    setState(() {
+      messages.add({"role": "user", "content": text});
     });
   }
 
@@ -128,46 +137,51 @@ class _FileDetailPageState extends State<FileDetailPage> {
                   },
                   child: Align(
                     alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isUser ? Colors.blue[100] : Colors.grey[300],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: isEditable
-                          ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _editableController,
-                              maxLines: null,
-                              decoration: const InputDecoration(
-                                border: InputBorder.none,
+                    child:IntrinsicWidth(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width * 0.75, // ✅ 限制最大宽度为屏幕 75%
+                        ),
+                        decoration: BoxDecoration(
+                          color: isUser ? Colors.blue[100] : Colors.grey[300],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: isEditable
+                            ? Row(// ✅ 让 Row 仅占用必要空间
+                          children: [
+                            Flexible(
+                              child: TextField(
+                                controller: _editableController,
+                                maxLines: null,
+                                decoration: const InputDecoration(
+                                  border: InputBorder.none,
+                                ),
                               ),
                             ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.check, color: Colors.green),
-                            onPressed: () => _confirmText(index),
-                          ),
-                        ],
-                      )
-                          : Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              message["content"]!,
-                              style: const TextStyle(fontSize: 16),
-                            ),
-                          ),
-                          if (message["retry"] == true)
                             IconButton(
-                              icon: const Icon(Icons.refresh, color: Colors.blue),
-                              onPressed: () => _retryGeneratingQuestion(index),
+                              icon: const Icon(Icons.check, color: Colors.green),
+                              onPressed: () => _confirmText(index),
                             ),
-                        ],
+                          ],
+                        )
+                            : Row(
+                          children: [
+                            Flexible( // ✅ 避免 Text 溢出，同时保证消息框可以缩小
+                              child: Text(
+                                message["content"]!,
+                                style: const TextStyle(fontSize: 16),
+                                softWrap: true,
+                              ),
+                            ),
+                            if (message["retry"] == true)
+                              IconButton(
+                                icon: const Icon(Icons.refresh, color: Colors.blue),
+                                onPressed: () => _retryGeneration(index),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -176,13 +190,32 @@ class _FileDetailPageState extends State<FileDetailPage> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              controller: _userInputController,
-              decoration: const InputDecoration(
-                hintText: "Type your answer...",
-                border: OutlineInputBorder(),
-              ),
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center, // ✅ 居中对齐
+              children: [
+                Container(
+                  width: MediaQuery.of(context).size.width * 0.75, // ✅ 文本框宽度缩小到 70%
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20), // ✅ 更大的圆角
+                    border: Border.all(color: Colors.grey), // ✅ 添加边框
+                    color: Colors.white,
+                  ),
+                  child: TextField(
+                    controller: _userInputController,
+                    decoration: const InputDecoration(
+                      hintText: "Type your answer...",
+                      border: InputBorder.none, // ✅ 移除默认边框
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10), // ✅ 增加内边距
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8), // ✅ 让发送按钮和文本框之间有点间距
+                IconButton(
+                  icon: const Icon(Icons.send, color: Colors.blue), // ✅ 发送按钮
+                  onPressed: () => _followUpGeneration(),
+                ),
+              ],
             ),
           ),
         ],

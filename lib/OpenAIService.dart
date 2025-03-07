@@ -5,7 +5,7 @@ class OpenAIService {
   final String apiName = "chatbotAPI"; // ✅ Amplify API Gateway 名称
 
   /// **生成 Reflective Question**
-  Future<String> generateReflectiveQuestion(String userText) async {
+  Future<String> initialGeneration(String userText) async {
     try {
       final Map<String, dynamic> requestBody = {
         "text": userText,
@@ -39,7 +39,7 @@ class OpenAIService {
   }
 
   /// **重新生成 Reflective Question**
-  Future<String> regenerateReflectiveQuestion(String userText) async {
+  Future<String> regenerate(String userText) async {
     try {
       final Map<String, dynamic> requestBody = {
         "text": userText,
