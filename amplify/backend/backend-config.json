@@ -1,0 +1,193 @@
+{
+  "api": {
+    "chatbotAPI": {
+      "dependsOn": [
+        {
+          "attributes": [
+            "Name",
+            "Arn"
+          ],
+          "category": "function",
+          "resourceName": "rekognitionAPI"
+        },
+        {
+          "attributes": [
+            "Name",
+            "Arn"
+          ],
+          "category": "function",
+          "resourceName": "generateQuestion"
+        }
+      ],
+      "providerPlugin": "awscloudformation",
+      "service": "API Gateway"
+    }
+  },
+  "auth": {
+    "autoethnographyapp346f8a46": {
+      "customAuth": false,
+      "dependsOn": [],
+      "providerPlugin": "awscloudformation",
+      "service": "Cognito",
+      "serviceType": "imported"
+    }
+  },
+  "function": {
+    "generateQuestion": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    },
+    "rekognitionAPI": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    }
+  },
+  "parameters": {
+    "AMPLIFY_auth_autoethnographyapp346f8a46_allowUnauthenticatedIdentities": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_auth_autoethnographyapp346f8a46_authRoleArn": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_auth_autoethnographyapp346f8a46_authRoleName": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_auth_autoethnographyapp346f8a46_identityPoolId": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_auth_autoethnographyapp346f8a46_identityPoolName": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_auth_autoethnographyapp346f8a46_nativeClientId": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_auth_autoethnographyapp346f8a46_unauthRoleArn": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_auth_autoethnographyapp346f8a46_unauthRoleName": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_auth_autoethnographyapp346f8a46_userPoolId": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_auth_autoethnographyapp346f8a46_userPoolName": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_auth_autoethnographyapp346f8a46_webClientId": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_function_generateQuestion_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "generateQuestion"
+        }
+      ]
+    },
+    "AMPLIFY_function_generateQuestion_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "generateQuestion"
+        }
+      ]
+    },
+    "AMPLIFY_function_rekognitionAPI_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "rekognitionAPI"
+        }
+      ]
+    },
+    "AMPLIFY_function_rekognitionAPI_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "rekognitionAPI"
+        }
+      ]
+    },
+    "AMPLIFY_storage_autoethnographyapp91f6a90d_bucketName": {
+      "usedBy": [
+        {
+          "category": "storage",
+          "resourceName": "autoethnographyapp91f6a90d"
+        }
+      ]
+    },
+    "AMPLIFY_storage_autoethnographyapp91f6a90d_region": {
+      "usedBy": [
+        {
+          "category": "storage",
+          "resourceName": "autoethnographyapp91f6a90d"
+        }
+      ]
+    }
+  },
+  "storage": {
+    "autoethnographyapp91f6a90d": {
+      "dependsOn": [],
+      "providerPlugin": "awscloudformation",
+      "service": "S3",
+      "serviceType": "imported"
+    }
+  }
+}

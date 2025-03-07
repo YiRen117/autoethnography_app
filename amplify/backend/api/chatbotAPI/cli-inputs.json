@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "paths": {
+    "/detectText": {
+      "name": "/detectText",
+      "lambdaFunction": "rekognitionAPI",
+      "permissions": {
+        "setting": "private",
+        "auth": [
+          "create",
+          "read",
+          "update",
+          "delete"
+        ]
+      }
+    },
+    "/generateQuestion": {
+      "name": "/generateQuestion",
+      "lambdaFunction": "generateQuestion",
+      "permissions": {
+        "setting": "private",
+        "auth": [
+          "create",
+          "read",
+          "update",
+          "delete"
+        ]
+      }
+    }
+  }
+}

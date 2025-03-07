@@ -1,0 +1,52 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-autoethnographyapp-dev-d1e9a-authRole",
+      "UnauthRoleArn": "arn:aws:iam::122610515855:role/amplify-autoethnographyapp-dev-d1e9a-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::122610515855:role/amplify-autoethnographyapp-dev-d1e9a-authRole",
+      "Region": "eu-west-1",
+      "DeploymentBucketName": "amplify-autoethnographyapp-dev-d1e9a-deployment",
+      "UnauthRoleName": "amplify-autoethnographyapp-dev-d1e9a-unauthRole",
+      "StackName": "amplify-autoethnographyapp-dev-d1e9a",
+      "StackId": "arn:aws:cloudformation:eu-west-1:122610515855:stack/amplify-autoethnographyapp-dev-d1e9a/be6ab400-f4fa-11ef-a11a-0635ab23533b",
+      "AmplifyAppId": "d1ng4hllw6yvhb",
+      "APIGatewayAuthURL": "https://s3.amazonaws.com/amplify-autoethnographyapp-dev-d1e9a-deployment/amplify-cfn-templates/api/APIGatewayAuthStack.json"
+    },
+    "categories": {
+      "auth": {
+        "autoethnographyapp346f8a46": {
+          "userPoolId": "eu-west-1_4OriCASG7",
+          "userPoolName": "User pool - autoethnography",
+          "webClientId": "2vngqv6r27drdgtnincug6ca2r",
+          "nativeClientId": "2vngqv6r27drdgtnincug6ca2r",
+          "identityPoolId": "eu-west-1:92b793a9-79b4-4858-be0d-ba580e2fa59d",
+          "identityPoolName": "MyAppIdentityPool",
+          "allowUnauthenticatedIdentities": true,
+          "authRoleArn": "arn:aws:iam::122610515855:role/service-role/Cognito_MyAppIdentityPoolAuthRole",
+          "authRoleName": "Cognito_MyAppIdentityPoolAuthRole",
+          "unauthRoleArn": "arn:aws:iam::122610515855:role/service-role/GuestForIdentity",
+          "unauthRoleName": "GuestForIdentity"
+        }
+      },
+      "function": {
+        "rekognitionAPI": {
+          "deploymentBucketName": "amplify-autoethnographyapp-dev-d1e9a-deployment",
+          "s3Key": "amplify-builds/rekognitionAPI-5850792f416a6b736d68-build.zip"
+        },
+        "generateQuestion": {
+          "deploymentBucketName": "amplify-autoethnographyapp-dev-d1e9a-deployment",
+          "s3Key": "amplify-builds/generateQuestion-6e62434977336f564132-build.zip"
+        }
+      },
+      "api": {
+        "chatbotAPI": {}
+      },
+      "storage": {
+        "autoethnographyapp91f6a90d": {
+          "bucketName": "autoethnography-appa497d-dev",
+          "region": "eu-west-1"
+        }
+      }
+    }
+  }
+}
