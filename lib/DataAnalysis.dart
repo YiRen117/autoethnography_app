@@ -3,7 +3,6 @@ import 'RekognitionService.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'OpenAIService.dart';
 
-
 class FileDetailPage extends StatefulWidget {
   final String fileName;
   final String filePath;
@@ -21,6 +20,9 @@ class _FileDetailPageState extends State<FileDetailPage> {
   final RekognitionService rekognitionService = RekognitionService();
   final OpenAIService openAIService = OpenAIService();
   String? fileUrl;
+  bool startChat = false;
+  bool isRetrying = false; // ✅ 是否处于 retry 状态
+  bool isErrorState = false; // ✅ 是否处于错误状态
 
   @override
   void initState() {
@@ -58,7 +60,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
     String? extractedText = await rekognitionService.detectTextFromS3(widget.filePath);
     safePrint("Extracted text: $extractedText");
     setState(() {
-      messages.removeLast(); // 移除"Reading file..."
+      messages.removeLast();
       messages.add({
         "role": "bot",
         "content": extractedText ?? "No text detected",
@@ -79,11 +81,34 @@ class _FileDetailPageState extends State<FileDetailPage> {
 
     setState(() {
       messages.removeLast();
-      messages.add({"role": "bot", "content": question, "retry": true});
+
+      if (question.contains("Error") || question.contains("Failed")) {
+        // ❌ 生成问题失败
+        messages.add({
+          "role": "bot",
+          "content": question,
+          "retry": true
+        });
+        isErrorState = true; // ✅ 进入错误状态
+      } else {
+        // ✅ 生成问题成功
+        messages.add({
+          "role": "bot",
+          "content": question,
+          "retry": true,
+          "userText": _editableController.text
+        });
+        isErrorState = false;
+      }
+      startChat = true;
     });
   }
 
   void _retryGeneration(int index) async {
+    setState(() {
+      isRetrying = true; // ✅ 进入 retry 状态，禁用发送按钮
+    });
+
     String? userText = messages[index]["userText"];
     if (userText == null) return;
 
@@ -92,10 +117,13 @@ class _FileDetailPageState extends State<FileDetailPage> {
 
     setState(() {
       messages[index]["content"] = newQuestion;
+      isRetrying = false; // ✅ retry 结束，恢复发送按钮
     });
   }
 
-  void _followUpGeneration() async {}
+  void _followUpGeneration() async {
+    // TODO: 这里实现 follow-up 逻辑
+  }
 
   void _botReply(String text) {
     setState(() {
@@ -189,35 +217,36 @@ class _FileDetailPageState extends State<FileDetailPage> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center, // ✅ 居中对齐
-              children: [
-                Container(
-                  width: MediaQuery.of(context).size.width * 0.75, // ✅ 文本框宽度缩小到 70%
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20), // ✅ 更大的圆角
-                    border: Border.all(color: Colors.grey), // ✅ 添加边框
-                    color: Colors.white,
-                  ),
-                  child: TextField(
-                    controller: _userInputController,
-                    decoration: const InputDecoration(
-                      hintText: "Type your answer...",
-                      border: InputBorder.none, // ✅ 移除默认边框
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10), // ✅ 增加内边距
+          if (startChat && !isErrorState) // ✅ 仅在生成问题成功时显示输入框
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: MediaQuery.of(context).size.width * 0.75,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.grey),
+                      color: Colors.white,
+                    ),
+                    child: TextField(
+                      controller: _userInputController,
+                      decoration: const InputDecoration(
+                        hintText: "Type your answer...",
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8), // ✅ 让发送按钮和文本框之间有点间距
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.blue), // ✅ 发送按钮
-                  onPressed: () => _followUpGeneration(),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: Icon(Icons.send, color: isRetrying ? Colors.grey : Colors.blue),
+                    onPressed: isRetrying ? null : () => _followUpGeneration(),
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
