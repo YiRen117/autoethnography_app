@@ -21,8 +21,10 @@ class _FileDetailPageState extends State<FileDetailPage> {
   final OpenAIService openAIService = OpenAIService();
   String? fileUrl;
   bool startChat = false;
-  bool isRetrying = false; // ✅ 是否处于 retry 状态
-  bool isErrorState = false; // ✅ 是否处于错误状态
+  bool isRetrying = false;
+  bool isErrorState = false;
+  bool showDetectedTextBox = false;
+  int followUpCount = 0; // ✅ 计数 Follow-Up 次数
 
   @override
   void initState() {
@@ -61,27 +63,22 @@ class _FileDetailPageState extends State<FileDetailPage> {
     safePrint("Extracted text: $extractedText");
     setState(() {
       messages.removeLast();
-      messages.add({
-        "role": "bot",
-        "content": extractedText ?? "No text detected",
-        "editable": true
-      });
+      showDetectedTextBox = true;
       _editableController.text = extractedText ?? "No text detected";
     });
   }
 
-  void _confirmText(int index) async {
+  void _confirmText() async {
     setState(() {
-      messages[index]["content"] = _editableController.text;
-      messages[index]["editable"] = false;
+      _userReply(_editableController.text);
+      showDetectedTextBox = false; // ✅ 文字确认后隐藏文本框
     });
+
     _botReply("Generating question...");
-    // 发送用户确认的文本给 OpenAI API
     String question = await openAIService.initialGeneration(_editableController.text);
 
     setState(() {
       messages.removeLast();
-
       if (question.contains("Error") || question.contains("Failed")) {
         // ❌ 生成问题失败
         messages.add({
@@ -91,7 +88,6 @@ class _FileDetailPageState extends State<FileDetailPage> {
         });
         isErrorState = true; // ✅ 进入错误状态
       } else {
-        // ✅ 生成问题成功
         messages.add({
           "role": "bot",
           "content": question,
@@ -106,24 +102,58 @@ class _FileDetailPageState extends State<FileDetailPage> {
 
   void _retryGeneration(int index) async {
     setState(() {
-      isRetrying = true; // ✅ 进入 retry 状态，禁用发送按钮
+      isRetrying = true;
     });
 
     String? userText = messages[index]["userText"];
     if (userText == null) return;
 
-    // 重新请求新的问题
     String newQuestion = await openAIService.regenerate(userText);
 
     setState(() {
       messages[index]["content"] = newQuestion;
-      isRetrying = false; // ✅ retry 结束，恢复发送按钮
+      isRetrying = false;
     });
   }
 
   void _followUpGeneration() async {
-    // TODO: 这里实现 follow-up 逻辑
+    if (followUpCount > 2) return; // ✅ 限制 Follow-Up 最多 2 次（最后一次用户回答后输入框消失）
+
+    String userAnswer = _userInputController.text.trim();
+    if (userAnswer.isEmpty) return;
+
+    _userReply(userAnswer);
+    _botReply("Generating follow-up question...");
+
+    String followUpQuestion = await openAIService.followUpGeneration(userAnswer);
+
+    setState(() {
+      messages.removeLast();
+      followUpCount++;
+
+      if (followUpQuestion.contains("Error") || followUpQuestion.contains("Failed")) {
+        messages.add({"role": "bot", "content": followUpQuestion, "retry": true});
+      } else {
+        messages.add({
+          "role": "bot",
+          "content": followUpQuestion,
+          "retry": true
+        });
+      }
+    });
   }
+
+  void _restartChat() {
+    setState(() {
+      messages.clear();
+      startChat = false;
+      isErrorState = false;
+      showDetectedTextBox = false;
+      followUpCount = 0;
+      _simulateFileSend();
+    });
+  }
+
 
   void _botReply(String text) {
     setState(() {
@@ -146,8 +176,42 @@ class _FileDetailPageState extends State<FileDetailPage> {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: messages.length,
+              itemCount: messages.length + (showDetectedTextBox ? 1 : 0), // ✅ 计算消息总数
               itemBuilder: (context, index) {
+                if (showDetectedTextBox && index == messages.length) {
+                  // ✅ 插入可编辑文本框（出现在用户文件消息的下方）
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          width: MediaQuery.of(context).size.width * 0.9, // ✅ 占满宽度
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey),
+                          ),
+                          child: TextField(
+                            controller: _editableController,
+                            maxLines: null,
+                            textAlign: TextAlign.center, // ✅ 居中文本
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        ElevatedButton(
+                          onPressed: _confirmText,
+                          child: const Text("Confirm"),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
                 final message = messages[index];
                 final isUser = message["role"] == "user";
                 final isEditable = message["editable"] ?? false;
@@ -190,7 +254,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
                             ),
                             IconButton(
                               icon: const Icon(Icons.check, color: Colors.green),
-                              onPressed: () => _confirmText(index),
+                              onPressed: () => _confirmText(),
                             ),
                           ],
                         )
@@ -217,7 +281,8 @@ class _FileDetailPageState extends State<FileDetailPage> {
               },
             ),
           ),
-          if (startChat && !isErrorState) // ✅ 仅在生成问题成功时显示输入框
+
+          if (startChat && !isErrorState)
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -242,7 +307,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
                   const SizedBox(width: 8),
                   IconButton(
                     icon: Icon(Icons.send, color: isRetrying ? Colors.grey : Colors.blue),
-                    onPressed: isRetrying ? null : () => _followUpGeneration(),
+                    onPressed: isRetrying ? null : () {}, // ✅ 这里调用 follow-up 逻辑
                   ),
                 ],
               ),
@@ -252,6 +317,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
     );
   }
 }
+
 
 class FilePreviewPage extends StatelessWidget {
   final String fileUrl;
