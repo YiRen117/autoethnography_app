@@ -17,6 +17,14 @@
           ],
           "category": "function",
           "resourceName": "generateQuestion"
+        },
+        {
+          "attributes": [
+            "Name",
+            "Arn"
+          ],
+          "category": "function",
+          "resourceName": "extractextAPI"
         }
       ],
       "providerPlugin": "awscloudformation",
@@ -33,6 +41,11 @@
     }
   },
   "function": {
+    "extractextAPI": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    },
     "generateQuestion": {
       "build": true,
       "providerPlugin": "awscloudformation",
@@ -130,6 +143,22 @@
         {
           "category": "auth",
           "resourceName": "autoethnographyapp346f8a46"
+        }
+      ]
+    },
+    "AMPLIFY_function_extractextAPI_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "extractextAPI"
+        }
+      ]
+    },
+    "AMPLIFY_function_extractextAPI_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "extractextAPI"
         }
       ]
     },

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'RekognitionService.dart';
+import 'TextDetection.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'OpenAIService.dart';
 import 'FileManager.dart';
@@ -20,7 +20,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
   List<Map<String, dynamic>> messages = [];
   TextEditingController _editableController = TextEditingController();
   TextEditingController _userInputController = TextEditingController();
-  final RekognitionService rekognitionService = RekognitionService();
+  final TextDetection textDetection = TextDetection();
   final OpenAIService openAIService = OpenAIService();
   late FileManager fileManager;
   String? fileUrl, userSub;
@@ -138,7 +138,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
   }
 
   Future<void> _detectText() async {
-    String? extractedText = await rekognitionService.detectTextFromS3(widget.filePath);
+    String? extractedText = await textDetection.detectTextFromS3(widget.filePath);
     setState(() {
       messages.removeLast();
       showDetectedTextBox = true;
@@ -243,8 +243,11 @@ class _FileDetailPageState extends State<FileDetailPage> {
       hasChatHistory = false;
       startChat = false;
       isErrorState = false;
+      isRetrying = false;
       showDetectedTextBox = false;
       followUpCount = 0;
+      isMemoed = false;
+      endOfChat = false;
       _userInputController.clear();
       isUserInputEmpty = true;
       _simulateFileSend();

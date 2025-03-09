@@ -36,6 +36,10 @@
         "generateQuestion": {
           "deploymentBucketName": "amplify-autoethnographyapp-dev-d1e9a-deployment",
           "s3Key": "amplify-builds/generateQuestion-6e62434977336f564132-build.zip"
+        },
+        "extractextAPI": {
+          "deploymentBucketName": "amplify-autoethnographyapp-dev-d1e9a-deployment",
+          "s3Key": "amplify-builds/extractextAPI-4561504a36496f364767-build.zip"
         }
       },
       "api": {

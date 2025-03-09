@@ -110,7 +110,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _showDeleteDialog(BuildContext context, String filePath) {
+  void _showDeleteDialog(BuildContext context, String filePath, bool isMemo) {
     showModalBottomSheet(
       context: context,
       builder: (BuildContext ctx) {
@@ -121,26 +121,24 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                "删除文件",
+                "Delete File",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 10),
-              const Text("Delete File?"),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context), // 取消按钮
-                    child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+                    child: const Text("Cancel", style: TextStyle(color: Colors.black87)),
                   ),
                   ElevatedButton(
                     onPressed: () {
                       Navigator.pop(context); // 先关闭弹窗
-                      fileManager.deleteFile(context, filePath, _fetchFiles); // 执行删除
+                      fileManager.deleteFile(context, filePath, isMemo ? _fetchMemos : _fetchFiles); // 执行删除
                     },
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                    child: const Text("Delete"),
+                    child: const Text("Delete", style: TextStyle(color: Colors.white)),
                   ),
                 ],
               ),
@@ -171,6 +169,9 @@ class _HomePageState extends State<HomePage> {
             onPressed: (index) {
               setState(() {
                 _selectedPage = index;
+                if (_selectedPage == 1) {
+                  _fetchMemos(); // ✅ 切换到 Memos 页面时，刷新 Memo 列表
+                }
               });
             },
             borderRadius: BorderRadius.circular(8),
@@ -211,7 +212,7 @@ class _HomePageState extends State<HomePage> {
         itemBuilder: (context, index) {
           final file = _files[index];
           return GestureDetector(
-            onLongPress: () => _showDeleteDialog(context, file.path),
+            onLongPress: () => _showDeleteDialog(context, file.path, false),
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -259,7 +260,6 @@ class _HomePageState extends State<HomePage> {
         itemBuilder: (context, index) {
           final memo = _memos[index];
           return GestureDetector(
-            onLongPress: () => _showDeleteDialog(context, memo.path), // ✅ 长按删除
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -280,7 +280,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete, color: Colors.grey), // ✅ 右侧删除按钮
-                  onPressed: () => _showDeleteDialog(context, memo.path),
+                  onPressed: () => _showDeleteDialog(context, memo.path, true),
                 ),
               ),
             ),

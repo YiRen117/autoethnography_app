@@ -47,14 +47,14 @@ class FileManager {
 
       safePrint("✅ 文件上传成功: $key");
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("✅ 文件上传成功")),
+        const SnackBar(content: Text("✅ File Uploaded")),
       );
 
       refreshFiles();
     } catch (e) {
       safePrint("❌ 上传失败: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("❌ 上传失败: $e")),
+        SnackBar(content: Text("❌ Upload Failure: $e")),
       );
     }
   }
@@ -68,14 +68,14 @@ class FileManager {
 
       safePrint("✅ 文件删除成功: $key");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("✅ 文件删除成功: ${key.split('/').last}")),
+        SnackBar(content: Text("✅ File Deleted: ${key.split('/').last}")),
       );
 
       refreshFiles();
     } catch (e) {
       safePrint("❌ 删除失败: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("❌ 删除失败: $e")),
+        SnackBar(content: Text("❌ Delete Failure: $e")),
       );
     }
   }

@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'package:amplify_flutter/amplify_flutter.dart';
 
-class RekognitionService {
+class TextDetection {
   final String apiName = "chatbotAPI"; // ✅ Amplify API Gateway 配置的名称
   final String bucketName = "autoethnography-appa497d-dev"; // ✅ S3 bucket 配置的名称
 
-  /// **调用 AWS Rekognition 识别 S3 图片文字**
+  /// **调用 AWS Extractext/Rekognition 识别 S3 图片文字**
   Future<String?> detectTextFromS3(String filePath) async {
     try {
       safePrint("Print File Path: $filePath");
@@ -19,7 +19,7 @@ class RekognitionService {
       };
 
       final RestOperation request = Amplify.API.post(
-        "/detectText", // ✅ REST API 路径（在 API Gateway 配置）
+        "/extractText", // ✅ REST API 路径（在 API Gateway 配置）
         apiName: apiName, // ✅ 指定 API Gateway 名称
         body: HttpPayload.json(requestBody),
       );
@@ -28,7 +28,7 @@ class RekognitionService {
       // ✅ 检查 HTTP 状态码
       safePrint("Status Code: ${response.statusCode}");
       if (response.statusCode != 200) {
-        safePrint("❌ AWS Rekognition API 调用失败: ${response.statusCode}");
+        safePrint("❌ AWS Extractext API 调用失败: ${response.statusCode}");
         return null;
       }
 
@@ -46,7 +46,7 @@ class RekognitionService {
       }
       return null;
     } catch (e) {
-      safePrint("❌ AWS Rekognition 识别失败: $e");
+      safePrint("❌ AWS Extractext 识别失败: $e");
       return null;
     }
   }

@@ -26,6 +26,19 @@
           "delete"
         ]
       }
+    },
+    "/extractText": {
+      "name": "/extractText",
+      "lambdaFunction": "extractextAPI",
+      "permissions": {
+        "setting": "private",
+        "auth": [
+          "create",
+          "read",
+          "update",
+          "delete"
+        ]
+      }
     }
   }
 }
