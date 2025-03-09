@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'RekognitionService.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'OpenAIService.dart';
+import 'FileManager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class FileDetailPage extends StatefulWidget {
   final String fileName;
@@ -19,19 +22,96 @@ class _FileDetailPageState extends State<FileDetailPage> {
   TextEditingController _userInputController = TextEditingController();
   final RekognitionService rekognitionService = RekognitionService();
   final OpenAIService openAIService = OpenAIService();
-  String? fileUrl;
+  late FileManager fileManager;
+  String? fileUrl, userSub;
   bool startChat = false;
   bool isRetrying = false;
   bool isErrorState = false;
   bool showDetectedTextBox = false;
-  int followUpCount = 0; // ✅ 计数 Follow-Up 次数
+  bool hasChatHistory = false;
+  bool isMemoed = false;
+  bool endOfChat = false;
+  int followUpCount = 0; // ✅ Follow-Up 次数
+  bool isUserInputEmpty = true; // ✅ 监听 TextField，控制发送按钮状态
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _loadChatHistory();
     _fetchFileUrl();
-    _simulateFileSend();
+    _getUserInfo();
+    _userInputController.addListener(_updateSendButtonState); // ✅ 监听输入框变化
   }
+
+  @override
+  void dispose() {
+    _userInputController.dispose();
+    _editableController.dispose();
+    _scrollController.dispose(); // ✅ 释放 ScrollController
+    super.dispose();
+  }
+
+  /// **滚动到底部**
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _getUserInfo() async {
+    final user = await Amplify.Auth.getCurrentUser();
+    setState(() {
+      userSub = user.userId;
+      fileManager = FileManager(userSub!);
+    });
+  }
+
+  /// **保存聊天记录到本地**
+  Future<void> _saveChatHistory() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    hasChatHistory = true;
+    final String chatData = jsonEncode(messages); // ✅ 转换为 JSON 格式
+    await prefs.setString('chat_history', chatData);
+    await prefs.setBool('startChat', startChat);
+    await prefs.setBool('isRetrying', isRetrying);
+    await prefs.setBool('isErrorState', isErrorState);
+    await prefs.setBool('isMemoed', isMemoed);
+    await prefs.setBool('endOfChat', endOfChat);
+    await prefs.setInt('followUpCount', followUpCount);
+  }
+
+  Future<void> _loadChatHistory() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? chatData = prefs.getString('chat_history');
+
+    if (chatData != null) {
+      hasChatHistory = true;
+      setState(() {
+        messages = List<Map<String, dynamic>>.from(jsonDecode(chatData));
+        startChat = prefs.getBool('startChat') ?? false;
+        isRetrying = prefs.getBool('isRetrying') ?? false;
+        isErrorState = prefs.getBool('isErrorState') ?? false;
+        isMemoed = prefs.getBool('isMemoed') ?? false;
+        endOfChat = prefs.getBool('endOfChat') ?? false;
+        followUpCount = prefs.getInt('followUpCount') ?? 0;
+      });
+      Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+    } else {
+      hasChatHistory = false;
+    }
+
+    if (!hasChatHistory) {
+      _simulateFileSend();
+    }
+  }
+
 
   Future<void> _fetchFileUrl() async {
     try {
@@ -47,12 +127,11 @@ class _FileDetailPageState extends State<FileDetailPage> {
   }
 
   void _simulateFileSend() {
+    if (hasChatHistory) {
+      return;
+    }
     setState(() {
-      messages.add({
-        "role": "user",
-        "content": "📂 ${widget.fileName}",
-        "isFile": true
-      });
+      messages.add({"role": "user", "content": "📂 ${widget.fileName}", "isFile": true});
       _botReply("Reading file...");
       _detectText();
     });
@@ -60,7 +139,6 @@ class _FileDetailPageState extends State<FileDetailPage> {
 
   Future<void> _detectText() async {
     String? extractedText = await rekognitionService.detectTextFromS3(widget.filePath);
-    safePrint("Extracted text: $extractedText");
     setState(() {
       messages.removeLast();
       showDetectedTextBox = true;
@@ -69,38 +147,44 @@ class _FileDetailPageState extends State<FileDetailPage> {
   }
 
   void _confirmText() async {
+    FocusScope.of(context).unfocus(); // ✅ 收起键盘
     setState(() {
       _userReply(_editableController.text);
-      showDetectedTextBox = false; // ✅ 文字确认后隐藏文本框
+      showDetectedTextBox = false;
     });
 
     _botReply("Generating question...");
-    String question = await openAIService.initialGeneration(_editableController.text);
-
-    setState(() {
-      messages.removeLast();
-      if (question.contains("Error") || question.contains("Failed")) {
-        // ❌ 生成问题失败
-        messages.add({
-          "role": "bot",
-          "content": question,
-          "retry": true
-        });
-        isErrorState = true; // ✅ 进入错误状态
-      } else {
-        messages.add({
-          "role": "bot",
-          "content": question,
-          "retry": true,
-          "userText": _editableController.text
-        });
-        isErrorState = false;
-      }
-      startChat = true;
-    });
+    String response = await openAIService.initialGeneration(_editableController.text);
+    _handleAIResponse(response, _editableController.text);
+    startChat = true;
   }
 
-  void _retryGeneration(int index) async {
+  /// **处理生成失败时的 Retry**
+  void retryError() async {
+    if (!isErrorState || messages.isEmpty) return;
+
+    String requestType = messages.last["requestType"] ?? "initial";
+    String userText = messages.last["userText"] ?? "";
+
+    String response;
+    switch (requestType) {
+      case "follow_up":
+        response = await openAIService.followUpGeneration(userText);
+        break;
+      case "regenerate":
+        response = await openAIService.regenerate(userText);
+        break;
+      case "generate_initial":
+      default:
+        response = await openAIService.initialGeneration(userText);
+        break;
+    }
+
+    _handleAIResponse(response, userText);
+  }
+
+  void _regeneration(int index) async {
+    FocusScope.of(context).unfocus(); // ✅ 收起键盘
     setState(() {
       isRetrying = true;
     });
@@ -108,37 +192,47 @@ class _FileDetailPageState extends State<FileDetailPage> {
     String? userText = messages[index]["userText"];
     if (userText == null) return;
 
-    String newQuestion = await openAIService.regenerate(userText);
-
+    String response = await openAIService.regenerate(userText);
+    _handleAIResponse(response, _editableController.text);
     setState(() {
-      messages[index]["content"] = newQuestion;
       isRetrying = false;
     });
   }
 
   void _followUpGeneration() async {
-    if (followUpCount > 2) return; // ✅ 限制 Follow-Up 最多 2 次（最后一次用户回答后输入框消失）
-
+    FocusScope.of(context).unfocus(); // ✅ 收起键盘
     String userAnswer = _userInputController.text.trim();
-    if (userAnswer.isEmpty) return;
-
     _userReply(userAnswer);
-    _botReply("Generating follow-up question...");
+    _userInputController.clear();
+    _updateSendButtonState();
+    followUpCount++; // ✅ 只有当用户实际发送回答时，才增加计数
 
-    String followUpQuestion = await openAIService.followUpGeneration(userAnswer);
+    if (followUpCount > 2){
+      endOfChat = true;
+      return;
+    }
+    _botReply("Generating question...");
 
+    String response = await openAIService.followUpGeneration(userAnswer);
+    _handleAIResponse(response, userAnswer);
+  }
+
+  /// **处理 AI API 响应的通用逻辑**
+  void _handleAIResponse(String response, String userText) {
     setState(() {
       messages.removeLast();
-      followUpCount++;
-
-      if (followUpQuestion.contains("Error") || followUpQuestion.contains("Failed")) {
-        messages.add({"role": "bot", "content": followUpQuestion, "retry": true});
+      if (response.contains("Error") || response.contains("Failed")) {
+        messages.add({"role": "bot", "content": response, "retry": true});
+        isErrorState = true;
       } else {
         messages.add({
           "role": "bot",
-          "content": followUpQuestion,
-          "retry": true
+          "content": response,
+          "retry": true,
+          "userText": userText
         });
+        _saveChatHistory();
+        isErrorState = false;
       }
     });
   }
@@ -146,40 +240,113 @@ class _FileDetailPageState extends State<FileDetailPage> {
   void _restartChat() {
     setState(() {
       messages.clear();
+      hasChatHistory = false;
       startChat = false;
       isErrorState = false;
       showDetectedTextBox = false;
       followUpCount = 0;
+      _userInputController.clear();
+      isUserInputEmpty = true;
       _simulateFileSend();
+    });
+
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove('chat_history'); // ✅ 清空本地存储
+      prefs.remove('startChat');
+      prefs.remove('isRetrying');
+      prefs.remove('isErrorState');
+      prefs.remove('isMemoed');
+      prefs.remove('endOfChat');
+      prefs.remove('followUpCount');
     });
   }
 
+  void _showMemoDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        TextEditingController memoNameController = TextEditingController(); // ✅ 用户输入 Memo 名称
+
+        return AlertDialog(
+          title: const Text("Save Memo"),
+          content: TextField(
+            controller: memoNameController,
+            decoration: const InputDecoration(
+              hintText: "Enter memo file name",
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                String memoName = memoNameController.text.trim();
+                if (memoName.isNotEmpty) {
+                  _saveMemoToS3(memoName); // ✅ 存储 Memo
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text("Save"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _saveMemoToS3(String memoName) {
+    String memoContent = messages.map((m) => "${m['role']}: ${m['content']}").join("\n");
+    fileManager.saveMemoToS3(memoName, userSub!, memoContent);
+    isMemoed = true;
+    _saveChatHistory();
+  }
+
+  void _updateSendButtonState() {
+    setState(() {
+      isUserInputEmpty = _userInputController.text.trim().isEmpty;
+    });
+  }
 
   void _botReply(String text) {
     setState(() {
       messages.add({"role": "bot", "content": text});
     });
+    Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+    _saveChatHistory();
   }
 
   void _userReply(String text) {
     setState(() {
       messages.add({"role": "user", "content": text});
     });
+    Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+    _saveChatHistory();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Chatbot")),
+      appBar: AppBar(
+        title: Text("Chatbot"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh), // ✅ Restart 按钮图标
+            tooltip: "Restart Chat",
+            onPressed: _restartChat, // ✅ 点击后重置聊天
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
             child: ListView.builder(
+              controller: _scrollController,
               padding: const EdgeInsets.all(16),
-              itemCount: messages.length + (showDetectedTextBox ? 1 : 0), // ✅ 计算消息总数
+              itemCount: messages.length + (showDetectedTextBox ? 1 : 0),
               itemBuilder: (context, index) {
                 if (showDetectedTextBox && index == messages.length) {
-                  // ✅ 插入可编辑文本框（出现在用户文件消息的下方）
                   return Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Column(
@@ -187,7 +354,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           margin: const EdgeInsets.symmetric(vertical: 6),
-                          width: MediaQuery.of(context).size.width * 0.9, // ✅ 占满宽度
+                          width: MediaQuery.of(context).size.width * 0.9,
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
@@ -196,10 +363,8 @@ class _FileDetailPageState extends State<FileDetailPage> {
                           child: TextField(
                             controller: _editableController,
                             maxLines: null,
-                            textAlign: TextAlign.center, // ✅ 居中文本
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                            ),
+                            textAlign: TextAlign.center,
+                            decoration: const InputDecoration(border: InputBorder.none),
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -270,7 +435,13 @@ class _FileDetailPageState extends State<FileDetailPage> {
                             if (message["retry"] == true)
                               IconButton(
                                 icon: const Icon(Icons.refresh, color: Colors.blue),
-                                onPressed: () => _retryGeneration(index),
+                                onPressed: () {
+                                  if (isErrorState) {
+                                    retryError();
+                                  } else {
+                                    _regeneration(index);
+                                  }
+                                },
                               ),
                           ],
                         ),
@@ -282,7 +453,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
             ),
           ),
 
-          if (startChat && !isErrorState)
+          if (startChat && !isErrorState && followUpCount <= 2)
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -306,10 +477,19 @@ class _FileDetailPageState extends State<FileDetailPage> {
                   ),
                   const SizedBox(width: 8),
                   IconButton(
-                    icon: Icon(Icons.send, color: isRetrying ? Colors.grey : Colors.blue),
-                    onPressed: isRetrying ? null : () {}, // ✅ 这里调用 follow-up 逻辑
+                    icon: Icon(Icons.send, color: isUserInputEmpty ? Colors.grey : Colors.blue),
+                    onPressed: isUserInputEmpty ? null : _followUpGeneration,
                   ),
                 ],
+              ),
+            ),
+
+          if (followUpCount > 2 || endOfChat)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 40.0), // ✅ 增加与底部的间距
+              child: ElevatedButton(
+                onPressed: isMemoed ? null : _showMemoDialog,
+                child: const Text("Memo"),
               ),
             ),
         ],
@@ -317,7 +497,6 @@ class _FileDetailPageState extends State<FileDetailPage> {
     );
   }
 }
-
 
 class FilePreviewPage extends StatelessWidget {
   final String fileUrl;

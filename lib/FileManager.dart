@@ -11,10 +11,11 @@ class FileManager {
   FileManager(this.userSub);
 
   /// **列出 S3 中的文件**
-  Future<List<StorageItem>> listFiles() async {
+  Future<List<StorageItem>> listFiles(bool listFile) async {
+    String path = listFile ? "uploads/$userSub/" : "memos/$userSub/";
     try {
       final result = await Amplify.Storage.list(
-        path: StoragePath.fromString("uploads/$userSub/"),
+        path: StoragePath.fromString(path),
         options: const StorageListOptions(
           pageSize: 50,
           pluginOptions: S3ListPluginOptions(
@@ -76,6 +77,23 @@ class FileManager {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("❌ 删除失败: $e")),
       );
+    }
+  }
+
+  Future<void> saveMemoToS3(String memoName, String userId, String memoContent) async {
+    try {
+      String filePath = "memos/$userId/$memoName.txt";
+      // ✅ 上传到 S3
+      await Amplify.Storage.uploadData(
+        path: StoragePath.fromString(filePath),
+        data: StorageDataPayload.string(
+            memoContent,
+            contentType: 'text/plain'), // ✅ 需要 StorageDataPayload 类型
+      ).result;
+
+      safePrint("✅ Memo saved: $memoName");
+    } catch (e) {
+      safePrint("❌ Memo upload failed: $e");
     }
   }
 }

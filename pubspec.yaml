@@ -35,9 +35,10 @@ dependencies:
   amplify_storage_s3: ^2.0.0
   image_picker:
   file_picker:
-
+  
   flutter:
     sdk: flutter
+  shared_preferences:
   go_router: ^6.5.5
 
   # The following adds the Cupertino Icons font to your application.

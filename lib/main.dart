@@ -7,6 +7,7 @@ import 'package:amplify_api/amplify_api.dart';
 import 'amplifyconfiguration.dart';
 import 'FileManager.dart';
 import 'DataAnalysis.dart';
+import 'MemoArchive.dart';
 
 void main() {
   runApp(const MyApp());
@@ -61,7 +62,9 @@ class _HomePageState extends State<HomePage> {
   String? _userSub;
   late FileManager fileManager;
   List<StorageItem> _files = [];
-  bool _isLoading = true;
+  List<StorageItem> _memos = [];
+  bool _isFileLoading = true;
+  bool _isMemoLoading = true;
   int _selectedPage = 0; // 0 = Files, 1 = Memos
 
   @override
@@ -76,16 +79,26 @@ class _HomePageState extends State<HomePage> {
       _userSub = user.userId;
       fileManager = FileManager(_userSub!);
       _fetchFiles();
+      _fetchMemos();
     });
   }
 
   Future<void> _fetchFiles() async {
-    final files = await fileManager.listFiles();
+    final files = await fileManager.listFiles(true);
     setState(() {
       _files = files;
-      _isLoading = false;
+      _isFileLoading = false;
     });
   }
+
+  Future<void> _fetchMemos() async {
+    final memos = await fileManager.listFiles(false);
+    setState(() {
+      _memos = memos;
+      _isMemoLoading = false;
+    });
+  }
+
 
   /// **退出登录**
   Future<void> _signOut() async {
@@ -182,7 +195,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildFilesPage() {
-    return _isLoading
+    return _isFileLoading
         ? const Center(child: CircularProgressIndicator())
         : _files.isEmpty
         ? const Center(child: Text("No files uploaded"))
@@ -235,6 +248,47 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildMemosPage() {
-    return const Center(child: Text("No memos yet"));
+    return _isMemoLoading
+        ? const Center(child: CircularProgressIndicator())
+        : _memos.isEmpty
+        ? const Center(child: Text("No memos yet"))
+        : Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: ListView.builder(
+        itemCount: _memos.length,
+        itemBuilder: (context, index) {
+          final memo = _memos[index];
+          return GestureDetector(
+            onLongPress: () => _showDeleteDialog(context, memo.path), // ✅ 长按删除
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MemoDetailPage(filePath: memo.path),
+              ),
+            ),
+            child: Card(
+              elevation: 3,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              margin: const EdgeInsets.symmetric(vertical: 6), // ✅ 适当的间距
+              child: ListTile(
+                leading: const Icon(Icons.note, size: 40, color: Colors.purple), // ✅ Memo 图标
+                title: Text(
+                  memo.path.split('/').last,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.grey), // ✅ 右侧删除按钮
+                  onPressed: () => _showDeleteDialog(context, memo.path),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
+
+
 }
