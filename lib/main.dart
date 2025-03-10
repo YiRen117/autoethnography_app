@@ -149,6 +149,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  bool showFileOptions = false; // ✅ 控制按钮显示状态
+  bool isImage(String fileName) {
+    final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    return imageExtensions.contains(fileName.split('.').last.toLowerCase());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -163,14 +169,13 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Column(
         children: [
-          // 页面切换按钮
           ToggleButtons(
             isSelected: [_selectedPage == 0, _selectedPage == 1],
             onPressed: (index) {
               setState(() {
                 _selectedPage = index;
                 if (_selectedPage == 1) {
-                  _fetchMemos(); // ✅ 切换到 Memos 页面时，刷新 Memo 列表
+                  _fetchMemos();
                 }
               });
             },
@@ -186,14 +191,52 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
+
       floatingActionButton: _selectedPage == 0
-          ? FloatingActionButton(
-            onPressed: () => fileManager.uploadFile(context, _fetchFiles),
-            child: const Icon(Icons.add),
-          )
+          ? Stack(
+        alignment: Alignment.bottomRight,
+        children: [
+          if (showFileOptions)
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton(
+                  heroTag: "btn1",
+                  onPressed: () {
+                    fileManager.uploadImage(context, _fetchFiles); // ✅ 选择并上传图片
+                    setState(() => showFileOptions = false);
+                  },
+                  child: const Icon(Icons.image),
+                  tooltip: "Upload Image",
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton(
+                  heroTag: "btn2",
+                  onPressed: () {
+                    fileManager.uploadDocument(context, _fetchFiles); // ✅ 选择并上传文档
+                    setState(() => showFileOptions = false);
+                  },
+                  child: const Icon(Icons.description),
+                  tooltip: "Upload Document",
+                ),
+                const SizedBox(height: 64),
+              ],
+            ),
+          FloatingActionButton(
+            heroTag: "btnMain",
+            onPressed: () {
+              setState(() {
+                showFileOptions = !showFileOptions; // ✅ 切换上传选项
+              });
+            },
+            child: Icon(showFileOptions ? Icons.close : Icons.add),
+          ),
+        ],
+      )
           : null,
     );
   }
+
 
   Widget _buildFilesPage() {
     return _isFileLoading
@@ -230,7 +273,11 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.insert_drive_file, size: 50, color: Colors.blue),
+                  Icon(
+                    isImage(file.path) ? Icons.image : Icons.insert_drive_file, // ✅ 根据文件类型选择图标
+                    size: 50,
+                    color: Colors.blue,
+                  ),
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Text(
@@ -278,9 +325,18 @@ class _HomePageState extends State<HomePage> {
                   memo.path.split('/').last,
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.grey), // ✅ 右侧删除按钮
-                  onPressed: () => _showDeleteDialog(context, memo.path, true),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.download, color: Colors.blue),
+                      onPressed: () => fileManager.downloadMemoFromS3(context, memo.path),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.grey),
+                      onPressed: () => _showDeleteDialog(context, memo.path, true),
+                    ),
+                  ],
                 ),
               ),
             ),

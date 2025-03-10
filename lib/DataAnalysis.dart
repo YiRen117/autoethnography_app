@@ -5,6 +5,7 @@ import 'OpenAIService.dart';
 import 'FileManager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class FileDetailPage extends StatefulWidget {
   final String fileName;
@@ -29,7 +30,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
   bool isErrorState = false;
   bool showDetectedTextBox = false;
   bool hasChatHistory = false;
-  bool isMemoed = false;
+  //bool isMemoed = false;
   bool endOfChat = false;
   int followUpCount = 0; // ✅ Follow-Up 次数
   bool isUserInputEmpty = true; // ✅ 监听 TextField，控制发送按钮状态
@@ -41,7 +42,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
     _loadChatHistory();
     _fetchFileUrl();
     _getUserInfo();
-    _userInputController.addListener(_updateSendButtonState); // ✅ 监听输入框变化
+    _userInputController.addListener(_updateSendButtonState);
   }
 
   @override
@@ -73,34 +74,57 @@ class _FileDetailPageState extends State<FileDetailPage> {
     });
   }
 
+
+  /// **📄 读取文本文件**
+  Future<void> _readTextFile() async {
+    try {
+      final result = await Amplify.Storage.getUrl(
+        path: StoragePath.fromString(widget.filePath),
+      ).result;
+
+      final response = await http.get(Uri.parse(result.url.toString()));
+      String textContent = utf8.decode(response.bodyBytes);
+
+      // ✅ 直接进入 Generate Question 逻辑
+      _botReply("Generating question...");
+      String responseText = await openAIService.initialGeneration(textContent);
+      _handleAIResponse(responseText, textContent);
+      startChat = true;
+    } catch (e) {
+      safePrint("❌ Failed to load text file: $e");
+      _botReply("❌ Failed to read text file.");
+    }
+  }
+
   /// **保存聊天记录到本地**
   Future<void> _saveChatHistory() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     hasChatHistory = true;
     final String chatData = jsonEncode(messages); // ✅ 转换为 JSON 格式
-    await prefs.setString('chat_history', chatData);
-    await prefs.setBool('startChat', startChat);
-    await prefs.setBool('isRetrying', isRetrying);
-    await prefs.setBool('isErrorState', isErrorState);
-    await prefs.setBool('isMemoed', isMemoed);
-    await prefs.setBool('endOfChat', endOfChat);
-    await prefs.setInt('followUpCount', followUpCount);
+    await prefs.setString('chat_history_${widget.filePath}', chatData);
+    await prefs.setBool('startChat_${widget.filePath}', startChat);
+    await prefs.setBool('isRetrying_${widget.filePath}', isRetrying);
+    await prefs.setBool('isErrorState_${widget.filePath}', isErrorState);
+    //await prefs.setBool('isMemoed_${widget.filePath}', isMemoed);
+    await prefs.setBool('endOfChat_${widget.filePath}', endOfChat);
+    await prefs.setInt('followUpCount_${widget.filePath}', followUpCount);
   }
 
   Future<void> _loadChatHistory() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? chatData = prefs.getString('chat_history');
+    final String? chatData = prefs.getString('chat_history_${widget.filePath}');
+    final bool hasFirstQuestion = prefs.getBool('startChat_${widget.filePath}') ?? false;
 
-    if (chatData != null) {
+    if (chatData != null && hasFirstQuestion) {
       hasChatHistory = true;
       setState(() {
         messages = List<Map<String, dynamic>>.from(jsonDecode(chatData));
-        startChat = prefs.getBool('startChat') ?? false;
-        isRetrying = prefs.getBool('isRetrying') ?? false;
-        isErrorState = prefs.getBool('isErrorState') ?? false;
-        isMemoed = prefs.getBool('isMemoed') ?? false;
-        endOfChat = prefs.getBool('endOfChat') ?? false;
-        followUpCount = prefs.getInt('followUpCount') ?? 0;
+        startChat = prefs.getBool('startChat_${widget.filePath}') ?? false;
+        isRetrying = prefs.getBool('isRetrying_${widget.filePath}') ?? false;
+        isErrorState = prefs.getBool('isErrorState_${widget.filePath}') ?? false;
+        //isMemoed = prefs.getBool('isMemoed_${widget.filePath}') ?? false;
+        endOfChat = prefs.getBool('endOfChat_${widget.filePath}') ?? false;
+        followUpCount = prefs.getInt('followUpCount_${widget.filePath}') ?? 0;
       });
       Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
     } else {
@@ -130,11 +154,22 @@ class _FileDetailPageState extends State<FileDetailPage> {
     if (hasChatHistory) {
       return;
     }
-    setState(() {
-      messages.add({"role": "user", "content": "📂 ${widget.fileName}", "isFile": true});
-      _botReply("Reading file...");
-      _detectText();
-    });
+    // ✅ 检查文件类型，决定处理方式
+    String fileExtension = widget.fileName.split('.').last.toLowerCase();
+    if (["jpg", "jpeg", "png"].contains(fileExtension)) {
+      setState(() {
+        messages.add({"role": "user", "content": "📂 ${widget.fileName}", "isFile": true});
+        _botReply("Reading file...");
+        _detectText();
+      });
+    } else if (["txt", "docx"].contains(fileExtension)) {
+      setState(() {
+        messages.add({"role": "user", "content": "📂 ${widget.fileName}", "isFile": true});
+        _readTextFile();  // ✅ 直接读取文本文件内容
+      });
+    } else {
+      _botReply("❌ Unsupported file type");
+    }
   }
 
   Future<void> _detectText() async {
@@ -246,7 +281,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
       isRetrying = false;
       showDetectedTextBox = false;
       followUpCount = 0;
-      isMemoed = false;
+      //isMemoed = false;
       endOfChat = false;
       _userInputController.clear();
       isUserInputEmpty = true;
@@ -254,13 +289,13 @@ class _FileDetailPageState extends State<FileDetailPage> {
     });
 
     SharedPreferences.getInstance().then((prefs) {
-      prefs.remove('chat_history'); // ✅ 清空本地存储
-      prefs.remove('startChat');
-      prefs.remove('isRetrying');
-      prefs.remove('isErrorState');
-      prefs.remove('isMemoed');
-      prefs.remove('endOfChat');
-      prefs.remove('followUpCount');
+      prefs.remove('chat_history_${widget.filePath}'); // ✅ 清空本地存储
+      prefs.remove('startChat_${widget.filePath}');
+      prefs.remove('isRetrying_${widget.filePath}');
+      prefs.remove('isErrorState_${widget.filePath}');
+      prefs.remove('isMemoed_${widget.filePath}');
+      prefs.remove('endOfChat_${widget.filePath}');
+      prefs.remove('followUpCount_${widget.filePath}');
     });
   }
 
@@ -300,9 +335,30 @@ class _FileDetailPageState extends State<FileDetailPage> {
   }
 
   void _saveMemoToS3(String memoName) {
-    String memoContent = messages.map((m) => "${m['role']}: ${m['content']}").join("\n");
+    List<String> questions = [];
+    List<String> answers = [];
+    bool hasStartedReflectiveQA = false; // ✅ 标记 Reflective Prompt 何时开始
+
+    for (int i = 0; i < messages.length; i++) {
+      if (messages[i]["role"] == "bot" && messages[i]["retry"] == true) {
+        questions.add(messages[i]["content"]);
+        hasStartedReflectiveQA = true; // ✅ 只在 AI 生成第一个问题后才开始记录
+      }
+      else if (messages[i]["role"] == "user" && hasStartedReflectiveQA) {
+        answers.add(messages[i]["content"]);
+      }
+    }
+
+    // ✅ 格式化 memo 内容
+    String memoContent = "";
+    for (int i = 0; i < questions.length; i++) {
+      memoContent += "**Q: ${questions[i]}**\n";
+      memoContent += "A: ${i < answers.length ? answers[i] : "(No answer)"}\n\n";
+    }
+
+    // ✅ 存入 S3
     fileManager.saveMemoToS3(memoName, userSub!, memoContent);
-    isMemoed = true;
+    //isMemoed = true;
     _saveChatHistory();
   }
 
@@ -390,7 +446,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => FilePreviewPage(fileName: widget.fileName, fileUrl: fileUrl!),
+                          builder: (context) => FilePreviewPage(fileName: widget.fileName, filePath: widget.filePath, fileUrl: fileUrl!),
                         ),
                       );
                     }
@@ -491,7 +547,8 @@ class _FileDetailPageState extends State<FileDetailPage> {
             Padding(
               padding: const EdgeInsets.only(bottom: 40.0), // ✅ 增加与底部的间距
               child: ElevatedButton(
-                onPressed: isMemoed ? null : _showMemoDialog,
+                // onPressed: isMemoed ? _showMemoDialog : _showMemoDialog,
+                onPressed: _showMemoDialog,
                 child: const Text("Memo"),
               ),
             ),
@@ -501,20 +558,85 @@ class _FileDetailPageState extends State<FileDetailPage> {
   }
 }
 
-class FilePreviewPage extends StatelessWidget {
+class FilePreviewPage extends StatefulWidget {
   final String fileUrl;
   final String fileName;
+  final String filePath;
 
-  const FilePreviewPage({super.key, required this.fileName, required this.fileUrl});
+  const FilePreviewPage({
+    super.key,
+    required this.fileName,
+    required this.fileUrl,
+    required this.filePath,
+  });
+
+  @override
+  _FilePreviewPageState createState() => _FilePreviewPageState();
+}
+
+class _FilePreviewPageState extends State<FilePreviewPage> {
+  String? fileContent;
+  bool isLoading = true;
+  bool isTextFile = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _determineFileType();
+  }
+
+  /// **判断文件类型**
+  void _determineFileType() {
+    String extension = widget.fileName.split('.').last.toLowerCase();
+    if (["jpg", "jpeg", "png"].contains(extension)) {
+      isTextFile = false; // ✅ 图片文件
+      isLoading = false;
+    } else if (["txt", "docx"].contains(extension)) {
+      isTextFile = true; // ✅ 文本文件
+      _fetchTextFile();  // ✅ 读取文本
+    }
+  }
+
+  /// **从 S3 读取文本文件**
+  Future<void> _fetchTextFile() async {
+    try {
+      final result = await Amplify.Storage.getUrl(
+        path: StoragePath.fromString(widget.filePath),
+      ).result;
+
+      final response = await http.get(Uri.parse(result.url.toString()));
+      setState(() {
+        fileContent = utf8.decode(response.bodyBytes);
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        fileContent = "❌ Failed to load text file.";
+        isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("$fileName")),
-      body: Center(
-        child: fileUrl.isNotEmpty
-            ? Image.network(fileUrl, width: double.infinity, fit: BoxFit.fitWidth)
-            : const CircularProgressIndicator(),
+      appBar: AppBar(title: Text(widget.fileName)),
+      body: isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : isTextFile
+        ? SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            fileContent ?? "No content",
+            style: const TextStyle(fontSize: 16),
+          ),
+        )
+        : Center(
+        child: Image.network(
+          widget.fileUrl,
+          width: double.infinity,
+          fit: BoxFit.fitWidth,
+        ),
       ),
     );
   }

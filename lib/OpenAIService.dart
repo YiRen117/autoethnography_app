@@ -43,6 +43,7 @@ class OpenAIService {
       // ✅ 解析 API 返回的 JSON 数据
       final List<int> responseBytes = await response.body.expand((x) => x).toList();
       final Map<String, dynamic> responseData = jsonDecode(utf8.decode(responseBytes));
+      safePrint("✅Question: ${responseData["message"]}");
       return responseData["message"] ?? "No response from AI service.";
     } catch (e) {
       return "Error connecting to AI service.";
