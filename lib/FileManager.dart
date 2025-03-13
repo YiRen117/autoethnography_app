@@ -7,16 +7,20 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 
 class FileManager {
   final ImagePicker _imagePicker = ImagePicker();
   final String userSub;
+  final String memoFolder = "memos/";
+  final String uploadFolder = "uploads/";
+  final String backupFolder = "copies/";
 
   FileManager(this.userSub);
 
   /// **列出 S3 中的文件**
   Future<List<StorageItem>> listFiles(bool listFile) async {
-    String path = listFile ? "uploads/$userSub/" : "memos/$userSub/";
+    String path = listFile ? "$uploadFolder$userSub/" : "$memoFolder$userSub/";
     try {
       final result = await Amplify.Storage.list(
         path: StoragePath.fromString(path),
@@ -107,7 +111,7 @@ class FileManager {
         return;
       }
 
-      String folderPath = "uploads/$userSub/";
+      String folderPath = "$uploadFolder$userSub/";
       String originalFileName = file.path.split('/').last;
 
       // ✅ 生成不重复的文件名
@@ -154,6 +158,42 @@ class FileManager {
     }
   }
 
+  Future<void> createBlankFile(String fileName, Function refreshFiles) async {
+    try {
+      String folderPath = "$uploadFolder$userSub/";
+      String uniqueFileName = await _generateUniqueFileName(folderPath, "$fileName.txt");
+      String filePath = "$folderPath$uniqueFileName";
+
+      // 创建空白的 txt 文件内容
+      String emptyContent = "";
+
+      await Amplify.Storage.uploadData(
+        path: StoragePath.fromString(filePath),
+        data: StorageDataPayload.string(emptyContent, contentType: 'text/plain'),
+      ).result;
+
+      safePrint("✅ Blank file created: $uniqueFileName");
+      refreshFiles();
+    } catch (e) {
+      safePrint("❌ Failed to create blank file: $e");
+    }
+  }
+
+  Future<void> updateFileContent(String fileName, String content) async {
+    try {
+      String filePath = "$uploadFolder$userSub/$fileName.txt";
+
+      await Amplify.Storage.uploadData(
+        path: StoragePath.fromString(filePath),
+        data: StorageDataPayload.string(content, contentType: 'text/plain'),
+      ).result;
+
+      safePrint("✅ File updated: $filePath");
+    } catch (e) {
+      safePrint("❌ Failed to update file content: $e");
+    }
+  }
+
   Future<void> _deleteLocalPrefs(String filePath) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -172,23 +212,116 @@ class FileManager {
     }
   }
 
-  Future<void> saveMemoToS3(String memoName, String userId, String memoContent) async {
+  Future<void> saveMemoToS3(String memoName, String userId, String memoContent, String originalFilePath) async {
     try {
-      String folderPath = "memos/$userId/";
+      String folderPath = "$memoFolder$userId/";
       String uniqueMemoName = await _generateUniqueFileName(folderPath, "$memoName.txt");
       String filePath = "$folderPath$uniqueMemoName";
 
-      // ✅ 上传到 S3
+      // ✅ 备份原文件
+      String? backupFilePath = await _backupOriginalFile(userId, originalFilePath);
+
+      // ✅ 生成 S3 Metadata
+      Map<String, String> metadata = {};
+      if (backupFilePath != null) {
+        metadata["backup_file"] = backupFilePath;
+      }
+
+      // ✅ 先上传 Memo
       await Amplify.Storage.uploadData(
         path: StoragePath.fromString(filePath),
         data: StorageDataPayload.string(
             memoContent,
-            contentType: 'text/plain'), // ✅ 需要 StorageDataPayload 类型
+            contentType: 'text/plain'),
+        options: StorageUploadDataOptions(metadata: metadata),
       ).result;
 
       safePrint("✅ Memo saved: $memoName");
+
     } catch (e) {
-      safePrint("❌ Memo upload failed: $e");
+      safePrint("❌ Memo 文件上传失败: $e");
+    }
+  }
+
+  /// **📌 备份原文件**
+  Future<String?> _backupOriginalFile(String userId, String originalFilePath) async {
+    try {
+      String fileName = originalFilePath.split('/').last;
+      String extension = fileName.split('.').last.toLowerCase();
+      String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+      String backupFolderPath = "$backupFolder$userId/";
+
+      // ✅ 获取原文件上传时间
+      DateTime? uploadTime = await _getFileUploadTime(originalFilePath);
+      if (uploadTime == null) {
+        safePrint("❌ 无法获取文件上传时间，跳过备份: $fileName");
+        return null;
+      }
+
+      // ✅ 生成备份文件名（文件名 + 时间戳）
+      String formattedTime = DateFormat('yyyyMMdd_HHmmss').format(uploadTime);
+      String backupFilePath = "$backupFolderPath${baseName}_$formattedTime.$extension";
+
+      // ✅ 检查 S3 是否已存在该备份
+      final listResult = await Amplify.Storage.list(
+        path: StoragePath.fromString(backupFolderPath),
+        options: const StorageListOptions(pageSize: 100),
+      ).result;
+
+      bool fileAlreadyBackedUp = listResult.items.any((file) => file.path == backupFilePath);
+
+      if (fileAlreadyBackedUp) {
+        safePrint("✅ 该文件已备份，无需重复上传: $backupFilePath");
+        return backupFilePath;
+      }
+
+      // ✅ 获取原文件内容
+      final originalFileUrlResult = await Amplify.Storage.getUrl(
+        path: StoragePath.fromString(originalFilePath),
+      ).result;
+
+      if (originalFileUrlResult.url.toString().isEmpty) {
+        throw Exception("S3 URL is empty.");
+      }
+
+      final response = await http.get(Uri.parse(originalFileUrlResult.url.toString()));
+
+      if (response.statusCode != 200) {
+        throw Exception("HTTP ${response.statusCode}: ${response.body}");
+      }
+
+      List<int> fileBytes = response.bodyBytes;
+
+      // ✅ 上传备份文件
+      await Amplify.Storage.uploadData(
+        path: StoragePath.fromString(backupFilePath),
+        data: StorageDataPayload.bytes(fileBytes),
+      ).result;
+
+      safePrint("✅ 备份成功: $backupFilePath");
+      return backupFilePath;
+    } catch (e) {
+      safePrint("❌ 备份失败: $e");
+      return null;
+    }
+  }
+
+  /// **📌 获取文件上传时间**
+  Future<DateTime?> _getFileUploadTime(String filePath) async {
+    try {
+      final listResult = await Amplify.Storage.list(
+        path: StoragePath.fromString(filePath),
+        options: const StorageListOptions(pageSize: 1),
+      ).result;
+
+      if (listResult.items.isNotEmpty) {
+        return listResult.items.first.lastModified;
+      } else {
+        return null;
+      }
+    } catch (e) {
+      safePrint("❌ 获取文件上传时间失败: $e");
+      return null;
     }
   }
 

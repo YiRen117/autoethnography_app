@@ -357,7 +357,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
     }
 
     // ✅ 存入 S3
-    fileManager.saveMemoToS3(memoName, userSub!, memoContent);
+    fileManager.saveMemoToS3(memoName, userSub!, memoContent, widget.filePath);
     //isMemoed = true;
     _saveChatHistory();
   }

@@ -120,9 +120,15 @@ class _HomePageState extends State<HomePage> {
             mainAxisSize: MainAxisSize.min,  // ✅ 解决 Overflow 问题
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                "Delete File",
+              Text(
+                isMemo ? "Delete Memo?" : "Delete File?",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isMemo ? "This will not affect the file related to this Memo."
+                : "This will not affect the Memos related to this file.",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.normal),
               ),
               const SizedBox(height: 20),
               Row(
@@ -144,6 +150,37 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  void _showTextEntryDialog(BuildContext context) {
+    TextEditingController textController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: const Text("Create New Entry"),
+          content: TextField(
+            controller: textController,
+            decoration: const InputDecoration(hintText: "Enter file name"),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (textController.text.trim().isNotEmpty) {
+                  fileManager.createBlankFile(textController.text.trim(), _fetchFiles);
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text("Create"),
+            ),
+          ],
         );
       },
     );
@@ -203,7 +240,7 @@ class _HomePageState extends State<HomePage> {
                 FloatingActionButton(
                   heroTag: "btn1",
                   onPressed: () {
-                    fileManager.uploadImage(context, _fetchFiles); // ✅ 选择并上传图片
+                    fileManager.uploadImage(context, _fetchFiles);
                     setState(() => showFileOptions = false);
                   },
                   child: const Icon(Icons.image),
@@ -213,11 +250,18 @@ class _HomePageState extends State<HomePage> {
                 FloatingActionButton(
                   heroTag: "btn2",
                   onPressed: () {
-                    fileManager.uploadDocument(context, _fetchFiles); // ✅ 选择并上传文档
+                    fileManager.uploadDocument(context, _fetchFiles);
                     setState(() => showFileOptions = false);
                   },
                   child: const Icon(Icons.description),
                   tooltip: "Upload Document",
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton(
+                  heroTag: "btn3",
+                  onPressed: () => _showTextEntryDialog(context),
+                  child: const Icon(Icons.edit),
+                  tooltip: "New Entry",
                 ),
                 const SizedBox(height: 64),
               ],
@@ -242,7 +286,7 @@ class _HomePageState extends State<HomePage> {
     return _isFileLoading
         ? const Center(child: CircularProgressIndicator())
         : _files.isEmpty
-        ? const Center(child: Text("No files uploaded"))
+        ? const Center(child: Text("Upload your first file for analysis"))
         : Padding(
       padding: const EdgeInsets.all(8.0),
       child: GridView.builder(
