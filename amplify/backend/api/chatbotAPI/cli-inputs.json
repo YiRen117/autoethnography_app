@@ -39,6 +39,19 @@
           "delete"
         ]
       }
+    },
+    "/themes": {
+      "name": "/themes",
+      "lambdaFunction": "generateThemes",
+      "permissions": {
+        "setting": "private",
+        "auth": [
+          "create",
+          "read",
+          "update",
+          "delete"
+        ]
+      }
     }
   }
 }

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'DataAnalysis.dart';
 
 class FileManager {
   final ImagePicker _imagePicker = ImagePicker();
@@ -34,53 +35,67 @@ class FileManager {
       ).result;
       return result.items;
     } catch (e) {
-      safePrint("❌ 获取文件失败: $e");
+      safePrint("❌ Failed to list items: $e");
       return [];
     }
   }
 
-  Future<String> _generateUniqueFileName(String folderPath, String fileName) async {
+  Future<String> generateUniqueFileName(String folderPath, String fileName) async {
     String fileBase = fileName.substring(0, fileName.lastIndexOf('.'));
     String extension = fileName.substring(fileName.lastIndexOf('.'));
     String newFileName = fileName;
     int counter = 1;
 
-    // ✅ 先 `await` 获取 `result`
-    final result = await Amplify.Storage.list(
-      path: StoragePath.fromString(folderPath),
-      options: const StorageListOptions(
-        pageSize: 100,
-        pluginOptions: S3ListPluginOptions(
-          excludeSubPaths: true,
-          delimiter: '/',
-        ),
-      ),
-    ).result;
-
-    List<StorageItem> existingFiles = result.items; // ✅ 现在 `items` 可用
+    List<StorageItem> existingFiles = await listFiles(true); // ✅ 现在 `items` 可用
 
     while (existingFiles.any((file) => file.path.split('/').last == newFileName)) {
-      newFileName = "$fileBase ($counter)$extension";
+      newFileName = "$fileBase($counter)$extension";
       counter++;
     }
 
     return newFileName;
   }
 
-  /// **📷 选择 & 上传图片**
   Future<void> uploadImage(BuildContext context, Function refreshFiles) async {
     try {
       final pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery);
       if (pickedFile == null) return;
 
       File file = File(pickedFile.path);
-      await _uploadFileToS3(context, file, refreshFiles);
+
+      // ✅ 显示上传中对话框
+      _showUploadingDialog(context);
+      // ✅ 执行上传
+      String? uploadedFilePath = await _uploadFileToS3(context, file);
+      // ✅ 关闭上传进度框
+      Navigator.pop(context);
+
+      if (uploadedFilePath != null) {
+        String fileName = uploadedFilePath.split('/').last;
+
+        // ✅ 先更新 HomePage 的文件列表
+        refreshFiles();
+
+        // ✅ 再跳转到 `FileDetailPage`
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FileDetailPage(
+              fileName: fileName,
+              filePath: uploadedFilePath,
+            ),
+          ),
+        );
+
+        // ✅ 当用户退出 `FileDetailPage`，再次刷新 HomePage 文件列表
+        refreshFiles();
+      }
     } catch (e) {
       safePrint("❌ Image upload failed: $e");
+      Navigator.pop(context); // 确保即使报错也能关闭对话框
     }
   }
 
-  /// **📄 选择 & 上传文档**
   Future<void> uploadDocument(BuildContext context, Function refreshFiles) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -90,33 +105,76 @@ class FileManager {
       if (result == null) return;
 
       File file = File(result.files.single.path!);
-      await _uploadFileToS3(context, file, refreshFiles);
+
+      // ✅ 显示上传中对话框
+      _showUploadingDialog(context);
+      // ✅ 执行上传
+      String? uploadedFilePath = await _uploadFileToS3(context, file);
+      // ✅ 关闭上传进度框
+      Navigator.pop(context);
+
+      if (uploadedFilePath != null) {
+        String fileName = uploadedFilePath.split('/').last;
+
+        // ✅ 先更新 HomePage 的文件列表
+        refreshFiles();
+
+        // ✅ 再跳转到 `FileDetailPage`
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FileDetailPage(
+              fileName: fileName,
+              filePath: uploadedFilePath,
+            ),
+          ),
+        );
+
+        // ✅ 当用户退出 `FileDetailPage`，再次刷新 HomePage 文件列表
+        refreshFiles();
+      }
     } catch (e) {
       safePrint("❌ Document upload failed: $e");
+      Navigator.pop(context); // 确保即使报错也能关闭对话框
     }
   }
 
+  void _showUploadingDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: Row(
+            children: const [
+              CircularProgressIndicator(),
+              SizedBox(width: 20),
+              Text("Uploading..."),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// **🔥 统一上传文件到 S3**
-  Future<void> _uploadFileToS3(BuildContext context, File file, Function refreshFiles) async {
+  Future<String?> _uploadFileToS3(BuildContext context, File file) async {
     try {
       String fileExtension = file.path.split('.').last.toLowerCase();
       List<String> allowedExtensions = ['jpg', 'jpeg', 'png', 'txt', 'docx'];
 
-      // ✅ 检查文件格式
       if (!allowedExtensions.contains(fileExtension)) {
-        safePrint("❌ Unsupported file type");
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("❌ Unsupported file type: $fileExtension")),
         );
-        return;
+        return null;
       }
 
       String folderPath = "$uploadFolder$userSub/";
       String originalFileName = file.path.split('/').last;
 
       // ✅ 生成不重复的文件名
-      String uniqueFileName = await _generateUniqueFileName(folderPath, originalFileName);
-
+      String uniqueFileName = await generateUniqueFileName(folderPath, originalFileName);
       String key = "$folderPath$uniqueFileName";
 
       await Amplify.Storage.uploadFile(
@@ -125,14 +183,15 @@ class FileManager {
       ).result;
 
       safePrint("✅ File uploaded: $key");
-      refreshFiles(); // ✅ 上传成功后刷新列表
+      return key; // ✅ 返回上传成功的路径
     } catch (e) {
-      safePrint("❌ Upload failed: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("❌ Upload Failure: $e")),
       );
+      return null; // ✅ 上传失败返回 null
     }
   }
+
 
   /// **删除 S3 中的文件**
   Future<void> deleteFile(BuildContext context, String key, Function refreshFiles) async {
@@ -144,53 +203,35 @@ class FileManager {
       // **删除本机 `SharedPreferences` 中的缓存**
       await _deleteLocalPrefs(key);
 
-      safePrint("✅ 文件删除成功: $key");
+      safePrint("✅ Deleted: $key");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("✅ File Deleted: ${key.split('/').last}")),
       );
 
       refreshFiles();
     } catch (e) {
-      safePrint("❌ 删除失败: $e");
+      safePrint("❌ Delete failure: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("❌ Delete Failure: $e")),
       );
     }
   }
 
-  Future<void> createBlankFile(String fileName, Function refreshFiles) async {
+  Future<void> writeEntryToS3(String fileName, String content) async {
     try {
       String folderPath = "$uploadFolder$userSub/";
-      String uniqueFileName = await _generateUniqueFileName(folderPath, "$fileName.txt");
-      String filePath = "$folderPath$uniqueFileName";
-
-      // 创建空白的 txt 文件内容
-      String emptyContent = "";
+      String key = "$folderPath$fileName"; // ✅ 生成 S3 文件路径
 
       await Amplify.Storage.uploadData(
-        path: StoragePath.fromString(filePath),
-        data: StorageDataPayload.string(emptyContent, contentType: 'text/plain'),
+        path: StoragePath.fromString(key),
+        data: StorageDataPayload.string(
+            content,
+            contentType: 'text/plain'),
       ).result;
 
-      safePrint("✅ Blank file created: $uniqueFileName");
-      refreshFiles();
+      safePrint("✅ Entry saved to S3: $key");
     } catch (e) {
-      safePrint("❌ Failed to create blank file: $e");
-    }
-  }
-
-  Future<void> updateFileContent(String fileName, String content) async {
-    try {
-      String filePath = "$uploadFolder$userSub/$fileName.txt";
-
-      await Amplify.Storage.uploadData(
-        path: StoragePath.fromString(filePath),
-        data: StorageDataPayload.string(content, contentType: 'text/plain'),
-      ).result;
-
-      safePrint("✅ File updated: $filePath");
-    } catch (e) {
-      safePrint("❌ Failed to update file content: $e");
+      safePrint("❌ Failed to save entry to S3: $e");
     }
   }
 
@@ -215,7 +256,7 @@ class FileManager {
   Future<void> saveMemoToS3(String memoName, String userId, String memoContent, String originalFilePath) async {
     try {
       String folderPath = "$memoFolder$userId/";
-      String uniqueMemoName = await _generateUniqueFileName(folderPath, "$memoName.txt");
+      String uniqueMemoName = await generateUniqueFileName(folderPath, "$memoName.txt");
       String filePath = "$folderPath$uniqueMemoName";
 
       // ✅ 备份原文件
@@ -239,7 +280,7 @@ class FileManager {
       safePrint("✅ Memo saved: $memoName");
 
     } catch (e) {
-      safePrint("❌ Memo 文件上传失败: $e");
+      safePrint("❌ Memo upload failure: $e");
     }
   }
 
@@ -254,7 +295,7 @@ class FileManager {
       // ✅ 获取原文件上传时间
       DateTime? uploadTime = await _getFileUploadTime(originalFilePath);
       if (uploadTime == null) {
-        safePrint("❌ 无法获取文件上传时间，跳过备份: $fileName");
+        safePrint("❌ Failed to fetch upload timestamp, skipping backup for $fileName");
         return null;
       }
 
@@ -271,7 +312,7 @@ class FileManager {
       bool fileAlreadyBackedUp = listResult.items.any((file) => file.path == backupFilePath);
 
       if (fileAlreadyBackedUp) {
-        safePrint("✅ 该文件已备份，无需重复上传: $backupFilePath");
+        safePrint("✅ Backup file exists: $backupFilePath");
         return backupFilePath;
       }
 
@@ -298,10 +339,10 @@ class FileManager {
         data: StorageDataPayload.bytes(fileBytes),
       ).result;
 
-      safePrint("✅ 备份成功: $backupFilePath");
+      safePrint("✅ Backup success: $backupFilePath");
       return backupFilePath;
     } catch (e) {
-      safePrint("❌ 备份失败: $e");
+      safePrint("❌ Backup failure: $e");
       return null;
     }
   }
@@ -334,7 +375,6 @@ class FileManager {
       ).result;
 
       final url = result.url.toString();
-      safePrint("📥 Download URL: $url");
 
       // ✅ 直接用 `http.get()` 获取文件内容
       final response = await http.get(Uri.parse(url));
@@ -350,14 +390,14 @@ class FileManager {
       // ✅ 写入文件
       await localFile.writeAsBytes(response.bodyBytes);
 
-      safePrint("✅ Memo 下载成功: ${localFile.path}");
+      safePrint("✅ Memo downloaded: ${localFile.path}");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("✅ Downloaded: ${localFile.path}")),
       );
 
       return localFile.path;
     } catch (e) {
-      safePrint("❌ Memo 下载失败: $e");
+      safePrint("❌ Memo download failure: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("❌ Download Failed: $e")),
       );

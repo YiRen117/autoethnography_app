@@ -3,6 +3,7 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 
 class OpenAIService {
   final String apiName = "chatbotAPI"; // ✅ Amplify API Gateway 名称
+  final String bucketName = "autoethnography-appa497d-dev";
 
   /// **生成 Reflective Question**
   Future<String> initialGeneration(String userText) async {
@@ -49,5 +50,35 @@ class OpenAIService {
       return "Error connecting to AI service.";
     }
   }
+
+  Future<List<String>> analyzeMemoThemes(String fileKey) async {
+    try {
+      final Map<String, dynamic> requestBody = {
+        "bucket": bucketName,
+        "file_key": fileKey
+      };
+
+      final RestOperation request = Amplify.API.post(
+        "/themes",
+        apiName: apiName,
+        body: HttpPayload.json(requestBody),
+      );
+
+      final AWSHttpResponse response = await request.response.timeout(Duration(seconds: 60));
+
+      if (response.statusCode != 200) {
+        return ["Failed to analyze memo themes."];
+      }
+
+      final List<int> responseBytes = await response.body.expand((x) => x).toList();
+      final Map<String, dynamic> responseData = jsonDecode(utf8.decode(responseBytes));
+
+      return List<String>.from(responseData["themes"] ?? []);
+    } catch (e) {
+      safePrint("Error connecting to AI service: $e");
+      return [];
+    }
+  }
+
 }
 

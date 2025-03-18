@@ -25,6 +25,14 @@
           ],
           "category": "function",
           "resourceName": "extractextAPI"
+        },
+        {
+          "attributes": [
+            "Name",
+            "Arn"
+          ],
+          "category": "function",
+          "resourceName": "generateThemes"
         }
       ],
       "providerPlugin": "awscloudformation",
@@ -47,6 +55,11 @@
       "service": "Lambda"
     },
     "generateQuestion": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    },
+    "generateThemes": {
       "build": true,
       "providerPlugin": "awscloudformation",
       "service": "Lambda"
@@ -175,6 +188,22 @@
         {
           "category": "function",
           "resourceName": "generateQuestion"
+        }
+      ]
+    },
+    "AMPLIFY_function_generateThemes_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "generateThemes"
+        }
+      ]
+    },
+    "AMPLIFY_function_generateThemes_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "generateThemes"
         }
       ]
     },

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:http/http.dart' as http; // ✅ 确保 http 包被导入
 import 'DataAnalysis.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'OpenAIService.dart';
 
 class MemoDetailPage extends StatefulWidget {
   final String filePath;
@@ -24,6 +26,9 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
     super.initState();
     _loadMemo();
     _fetchBackupFileInfo();
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove(widget.filePath);
+    });
   }
 
   Future<void> _loadMemo() async {
@@ -52,6 +57,30 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
       });
     }
   }
+
+  Future<void> _analyzeAndStoreThemes() async {
+    try {
+      safePrint("🔍 Analyzing memo themes...");
+
+      OpenAIService openAIService = OpenAIService();
+      List<String> themes = await openAIService.analyzeMemoThemes(
+          widget.filePath
+      );
+
+      if (themes.isNotEmpty) {
+        // ✅ 将主题存入 SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setStringList("memoThemes_${widget.filePath}", themes);
+
+        safePrint("✅ Themes saved: $themes");
+      } else {
+        safePrint("⚠️ No themes returned from OpenAI API.");
+      }
+    } catch (e) {
+      safePrint("❌ Error analyzing memo themes: $e");
+    }
+  }
+
 
   Future<void> _fetchBackupFileInfo() async {
     try {
@@ -107,6 +136,38 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
     }
   }
 
+  List<TextSpan> _formatMemoContent(String content) {
+    final List<TextSpan> spans = [];
+    final RegExp pattern = RegExp(r'\*\*(.*?)\*\*'); // ✅ 匹配 **加粗内容**
+
+    int lastMatchEnd = 0;
+    final matches = pattern.allMatches(content);
+
+    for (final match in matches) {
+      // ✅ 添加普通文本
+      if (match.start > lastMatchEnd) {
+        spans.add(TextSpan(text: content.substring(lastMatchEnd, match.start)));
+      }
+
+      // ✅ 添加加粗问题
+      spans.add(
+        TextSpan(
+          text: match.group(1), // **问题**
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      );
+
+      lastMatchEnd = match.end;
+    }
+
+    // ✅ 添加剩余文本
+    if (lastMatchEnd < content.length) {
+      spans.add(TextSpan(text: content.substring(lastMatchEnd)));
+    }
+
+    return spans;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -118,11 +179,16 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                child: Text(memoContent),
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 16, color: Colors.black),
+                    children: _formatMemoContent(memoContent),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 20),
-            if (backupFilePath != null) // ✅ 仅当有备份文件时显示按钮
+            if (backupFilePath != null)
               ElevatedButton(
                 onPressed: _viewOriginalFile,
                 child: const Text("View Original File"),

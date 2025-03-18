@@ -40,6 +40,10 @@
         "extractextAPI": {
           "deploymentBucketName": "amplify-autoethnographyapp-dev-d1e9a-deployment",
           "s3Key": "amplify-builds/extractextAPI-4561504a36496f364767-build.zip"
+        },
+        "generateThemes": {
+          "deploymentBucketName": "amplify-autoethnographyapp-dev-d1e9a-deployment",
+          "s3Key": "amplify-builds/generateThemes-4e3435556d6c68467544-build.zip"
         }
       },
       "api": {
