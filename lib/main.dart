@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_authenticator/amplify_authenticator.dart';
@@ -721,6 +720,20 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                     ),
+                    // ✅ 显示红点（如果 Memo 是新 Memo）
+                    if (isNewMemo)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               );

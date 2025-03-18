@@ -1,10 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
-import 'package:http/http.dart' as http; // ✅ 确保 http 包被导入
-import 'DataAnalysis.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'OpenAIService.dart';
+import 'DataAnalysis.dart';
 
 class MemoDetailPage extends StatefulWidget {
   final String filePath;
@@ -17,18 +16,16 @@ class MemoDetailPage extends StatefulWidget {
 
 class _MemoDetailPageState extends State<MemoDetailPage> {
   String memoContent = "Loading...";
-  String? backupFilePath; // ✅ 用于存储原文件备份路径
-  String? backupFileUrl; // ✅ 用于存储原文件备份路径
-  String? backupFileName; // ✅ 用于存储原文件备份路径
+  List<List<String>> themes = []; // ✅ 存储 [Theme, Description]
+  bool isThemeLoading = true;
+  bool isPageLoading = true;
+  String? backupFilePath, backupFileName, backupFileUrl;
 
   @override
   void initState() {
     super.initState();
-    _loadMemo();
+    _loadMemo().then((_) => _loadMemoThemes());
     _fetchBackupFileInfo();
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.remove(widget.filePath);
-    });
   }
 
   Future<void> _loadMemo() async {
@@ -46,6 +43,7 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
       if (response.statusCode == 200) {
         setState(() {
           memoContent = utf8.decode(response.bodyBytes);
+          isPageLoading = false;
         });
       } else {
         throw Exception("Failed to fetch memo: ${response.statusCode}");
@@ -58,26 +56,27 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
     }
   }
 
-  Future<void> _analyzeAndStoreThemes() async {
-    try {
-      safePrint("🔍 Analyzing memo themes...");
+  Future<void> _loadMemoThemes() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String>? storedThemes = prefs.getStringList("memoThemes_${widget.filePath}");
 
-      OpenAIService openAIService = OpenAIService();
-      List<String> themes = await openAIService.analyzeMemoThemes(
-          widget.filePath
-      );
+    if (storedThemes != null && storedThemes.isNotEmpty) {
+      List<List<String>> parsedThemes = storedThemes.map((themeText) {
+        List<String> parts = themeText.split(" - ");
+        String theme = parts.isNotEmpty ? parts[0].replaceAll("**", "").trim() : "Unknown";
+        String description = parts.length > 1 ? parts[1].trim() : "";
 
-      if (themes.isNotEmpty) {
-        // ✅ 将主题存入 SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setStringList("memoThemes_${widget.filePath}", themes);
+        return [theme, description];
+      }).toList();
 
-        safePrint("✅ Themes saved: $themes");
-      } else {
-        safePrint("⚠️ No themes returned from OpenAI API.");
-      }
-    } catch (e) {
-      safePrint("❌ Error analyzing memo themes: $e");
+      setState(() {
+        themes = parsedThemes;
+        isThemeLoading = false;
+      });
+    } else {
+      setState(() {
+        isThemeLoading = true;
+      });
     }
   }
 
@@ -138,21 +137,19 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
 
   List<TextSpan> _formatMemoContent(String content) {
     final List<TextSpan> spans = [];
-    final RegExp pattern = RegExp(r'\*\*(.*?)\*\*'); // ✅ 匹配 **加粗内容**
+    final RegExp pattern = RegExp(r'\*\*(.*?)\*\*');
 
     int lastMatchEnd = 0;
     final matches = pattern.allMatches(content);
 
     for (final match in matches) {
-      // ✅ 添加普通文本
       if (match.start > lastMatchEnd) {
         spans.add(TextSpan(text: content.substring(lastMatchEnd, match.start)));
       }
 
-      // ✅ 添加加粗问题
       spans.add(
         TextSpan(
-          text: match.group(1), // **问题**
+          text: match.group(1),
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       );
@@ -160,7 +157,6 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
       lastMatchEnd = match.end;
     }
 
-    // ✅ 添加剩余文本
     if (lastMatchEnd < content.length) {
       spans.add(TextSpan(text: content.substring(lastMatchEnd)));
     }
@@ -172,29 +168,100 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Memo Detail")),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: RichText(
-                  text: TextSpan(
-                    style: const TextStyle(fontSize: 16, color: Colors.black),
-                    children: _formatMemoContent(memoContent),
+      body: isPageLoading
+          ? const Center(child: CircularProgressIndicator()) // ✅ **加载中时，整页 Loading**
+          : Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ✅ Memo 内容部分
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ✅ Memo 内容
+                  const Text(
+                    "  Q&A Memo：",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: RichText(
+                      text: TextSpan(
+                        style: const TextStyle(fontSize: 16, color: Colors.black),
+                        children: _formatMemoContent(memoContent),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ✅ 分割线
+                  const Divider(thickness: 1),
+
+                  // ✅ Summary 标题
+                  const SizedBox(height: 10),
+                  const Text(
+                    "  Summary:",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // ✅ 显示 Themes 或 "Analyzing themes..."
+                  themes.isEmpty
+                      ? const Text(
+                    "Themes analyzing...",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.grey,
+                    ),
+                  )
+                      : Column(
+                    children: themes.map((themeData) {
+                      return Card(
+                        elevation: 2,
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: RichText(
+                            text: TextSpan(
+                              style: const TextStyle(fontSize: 16, color: Colors.black),
+                              children: [
+                                TextSpan(
+                                  text: "${themeData[0]}: ",
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                TextSpan(text: themeData[1]),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-            if (backupFilePath != null)
-              ElevatedButton(
-                onPressed: _viewOriginalFile,
-                child: const Text("View Original File"),
-              ),
-          ],
-        ),
+          ),
+
+          // ✅ View Original File 按钮 (保持底部固定)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            child: ElevatedButton(
+              onPressed: () {
+                // TODO: 处理 View Original File
+              },
+              child: const Text("View Original File"),
+            ),
+          ),
+        ],
       ),
     );
   }
