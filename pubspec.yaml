@@ -36,6 +36,7 @@ dependencies:
   image_picker:
   file_picker:
   flutter_markdown:
+  google_fonts:
   
   flutter:
     sdk: flutter

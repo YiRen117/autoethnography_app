@@ -34,8 +34,8 @@ class _FileDetailPageState extends State<FileDetailPage> {
   bool hasChatHistory = false;
   //bool isMemoed = false;
   bool endOfChat = false;
-  int followUpCount = 0; // ✅ Follow-Up 次数
-  bool isUserInputEmpty = true; // ✅ 监听 TextField，控制发送按钮状态
+  int followUpCount = 0;
+  bool isUserInputEmpty = true;
   final ScrollController _scrollController = ScrollController();
   bool isEntryMode = false;
   bool hasWrittenToFile = false;
@@ -52,11 +52,10 @@ class _FileDetailPageState extends State<FileDetailPage> {
   void dispose() {
     _userInputController.dispose();
     _editableController.dispose();
-    _scrollController.dispose(); // ✅ 释放 ScrollController
+    _scrollController.dispose();
     super.dispose();
   }
 
-  /// **滚动到底部**
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -69,6 +68,10 @@ class _FileDetailPageState extends State<FileDetailPage> {
     });
   }
 
+  void _scrollToBottomAfterBuild() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  }
+
   Future<void> _getUserInfo() async {
     final user = await Amplify.Auth.getCurrentUser();
     setState(() {
@@ -78,8 +81,6 @@ class _FileDetailPageState extends State<FileDetailPage> {
     _loadChatHistory();
   }
 
-
-  /// **📄 读取文本文件**
   Future<void> _readTextFile() async {
     try {
       final result = await Amplify.Storage.getUrl(
@@ -98,11 +99,11 @@ class _FileDetailPageState extends State<FileDetailPage> {
     }
   }
 
-  /// **保存聊天记录到本地**
   Future<void> _saveChatHistory() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     hasChatHistory = true;
-    final String chatData = jsonEncode(messages); // ✅ 转换为 JSON 格式
+    final String chatData = jsonEncode(messages);
+    final rawDataJson = jsonEncode({"content": rawData});
     await prefs.setString('chat_history_${widget.filePath}', chatData);
     await prefs.setBool('startChat_${widget.filePath}', startChat);
     await prefs.setBool('isRetrying_${widget.filePath}', isRetrying);
@@ -111,9 +112,9 @@ class _FileDetailPageState extends State<FileDetailPage> {
     await prefs.setBool('isTextRead_${widget.filePath}', isTextRead);
     await prefs.setBool('endOfChat_${widget.filePath}', endOfChat);
     await prefs.setInt('followUpCount_${widget.filePath}', followUpCount);
-    await prefs.setString('rawData_${widget.filePath}', rawData!);
+    await prefs.setString('rawData_${widget.filePath}', rawDataJson);
 
-    Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+    _scrollToBottomAfterBuild();
   }
 
   Future<void> _loadChatHistory() async {
@@ -132,14 +133,18 @@ class _FileDetailPageState extends State<FileDetailPage> {
         isTextRead = prefs.getBool('isTextRead_${widget.filePath}') ?? false;
         endOfChat = prefs.getBool('endOfChat_${widget.filePath}') ?? false;
         followUpCount = prefs.getInt('followUpCount_${widget.filePath}') ?? 0;
-        rawData = prefs.getString('rawData_${widget.filePath}');
+        final String? rawDataJson = prefs.getString('rawData_${widget.filePath}');
+        if (rawDataJson != null) {
+          rawData = jsonDecode(rawDataJson)["content"];
+        }
 
         final lastMessage = messages.last;
         if (lastMessage["role"] == "bot" && lastMessage["type"] == "generate") {
+          lastMessage["showRefresh"] = true;
           _restoreLastMessage(lastMessage);
         }
       });
-      Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+      _scrollToBottomAfterBuild();
     } else {
       hasChatHistory = false;
     }
@@ -150,7 +155,6 @@ class _FileDetailPageState extends State<FileDetailPage> {
   }
 
   Future<void> _restoreLastMessage(Map<String, dynamic> lastMessage) async {
-    lastMessage["showRefresh"] = true; // ✅ 添加刷新按钮标记
     if (lastMessage["userText"] == null || lastMessage["userText"] == "") {
       String? latestUserMessage;
       for (int i = messages.length - 1; i >= 0; i--) {
@@ -176,7 +180,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
         fileUrl = result.url.toString();
       });
     } catch (e) {
-      safePrint("❌ 获取文件 URL 失败: $e");
+      safePrint("❌ Failed to get file URL: $e");
     }
   }
 
@@ -199,10 +203,8 @@ class _FileDetailPageState extends State<FileDetailPage> {
         _detectText();
       });
     } else if (["txt", "docx"].contains(fileExtension)) {
-      // ✅ 文档文件：检查是否是 Typed Entry
       bool isEmpty = await _isFileEmpty(widget.filePath);
       if (widget.fileName.startsWith("TypedEntry_") && isEmpty) {
-        // ✅ 这是一个新的 Entry，等待用户输入
         isEntryMode = true;
         setState(() {
           messages.add({
@@ -212,7 +214,6 @@ class _FileDetailPageState extends State<FileDetailPage> {
           });
         });
       } else {
-        // ✅ 这是普通文档，读取文本
         setState(() {
           messages.add({
             "role": "user",
@@ -226,30 +227,30 @@ class _FileDetailPageState extends State<FileDetailPage> {
     } else {
       _botReply("❌ Unsupported file type", "error");
     }
+    _scrollToBottomAfterBuild();
   }
 
   Future<bool> _isFileEmpty(String filePath) async {
     try {
       final files = await fileManager.listFiles(true);
 
-      // ✅ 遍历文件列表，检查 `filePath` 是否存在
       for (var file in files) {
         if (file.path == filePath) {
-          return false; // ✅ 文件存在，不是空的
+          return false;
         }
       }
-      return true; // ✅ 文件不存在，视为空
+      return true;
     } catch (e) {
       safePrint("❌ Failed to check file existence: $e");
-      return true; // ✅ 发生异常时，假设文件为空
+      return true;
     }
   }
 
   void _handleEntryInput() async {
-    FocusScope.of(context).unfocus(); // ✅ 关闭键盘
+    FocusScope.of(context).unfocus();
     String userText = _userInputController.text.trim();
 
-    if (userText.isEmpty) return; // ✅ 避免上传空文本
+    if (userText.isEmpty) return;
     await fileManager.writeEntryToS3(widget.fileName, userText);
 
     setState(() {
@@ -259,6 +260,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
       rawData = userText;
       hasWrittenToFile = true;
     });
+    _scrollToBottomAfterBuild();
   }
 
   Future<void> _detectText() async {
@@ -272,7 +274,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
   }
 
   void _confirmText() async {
-    FocusScope.of(context).unfocus(); // ✅ 收起键盘
+    FocusScope.of(context).unfocus();
     if(isTextRead){
       setState(() {
         isTextRead = false;
@@ -292,60 +294,88 @@ class _FileDetailPageState extends State<FileDetailPage> {
     }
 
     _botReply("Generating question...", "generate");
+
+    final Stopwatch stopwatch = Stopwatch()..start();
     String response = await openAIService.initialGeneration(rawData!);
+    stopwatch.stop();
+    if (!(response.contains("Error") || response.contains("Failed"))) {
+      safePrint("⏱️ Time taken for question generation: "
+          "${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(2)} s");
+    }
+
     _handleAIResponse(response, rawData!);
     startChat = true;
   }
 
-  /// **处理生成失败时的 Retry**
   void retryError() async {
     if (!isErrorState || messages.isEmpty) return;
 
     String requestType = messages.last["requestType"] ?? "initial";
     String userText = messages.last["userText"] ?? "";
 
+    if (userText == "") {
+      _restoreLastMessage(messages.last);
+      userText = messages.last["userText"];
+    }
+
     String response;
+    final Stopwatch stopwatch;
     switch (requestType) {
       case "follow_up":
+        stopwatch = Stopwatch()..start();
         response = await openAIService.followUpGeneration(userText);
         break;
       case "regenerate":
+        stopwatch = Stopwatch()..start();
         response = await openAIService.regenerate(userText);
         break;
       case "generate_initial":
       default:
+        stopwatch = Stopwatch()..start();
         response = await openAIService.initialGeneration(userText);
         break;
+    }
+    stopwatch.stop();
+    if (!(response.contains("Error") || response.contains("Failed"))) {
+      safePrint("⏱️ Time taken for question generation: "
+          "${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(2)} s");
     }
 
     _handleAIResponse(response, userText);
   }
 
   void _regeneration(int index) async {
-    FocusScope.of(context).unfocus(); // ✅ 收起键盘
+    FocusScope.of(context).unfocus();
     setState(() {
       isRetrying = true;
     });
 
     String userText = messages[index]["userText"] ?? "";
-    safePrint("Retrying with user text: $userText");
 
     messages.removeLast();
     _botReply("Generating question...", "generate");
     if (userText == "") {
-      safePrint("❌ Regeneration failure: No user text found.");
-      return;
+      _restoreLastMessage(messages.last);
+      userText = messages.last["userText"];
     }
 
+    final Stopwatch stopwatch = Stopwatch()..start();
     String response = await openAIService.regenerate(userText);
-    _handleAIResponse(response, _editableController.text);
+    stopwatch.stop();
+    if (!(response.contains("Error") || response.contains("Failed"))) {
+      safePrint("⏱️ Time taken for question generation: "
+          "${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(2)} s");
+    }
+
+    _scrollToBottomAfterBuild();
+    _handleAIResponse(response, userText);
     setState(() {
       isRetrying = false;
     });
   }
 
   void _followUpGeneration() async {
-    FocusScope.of(context).unfocus(); // ✅ 收起键盘
+    FocusScope.of(context).unfocus();
     String userAnswer = _userInputController.text.trim();
 
     for (int i = 0; i < messages.length; i++) {
@@ -357,7 +387,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
     _userReply(userAnswer, "answer");
     _userInputController.clear();
     _updateSendButtonState();
-    followUpCount++; // ✅ 只有当用户实际发送回答时，才增加计数
+    followUpCount++;
 
     if (followUpCount > 2){
       endOfChat = true;
@@ -365,11 +395,17 @@ class _FileDetailPageState extends State<FileDetailPage> {
     }
     _botReply("Generating question...", "generate");
 
+    final Stopwatch stopwatch = Stopwatch()..start();
     String response = await openAIService.followUpGeneration(userAnswer);
+    stopwatch.stop();
+    if (!(response.contains("Error") || response.contains("Failed"))) {
+      safePrint("⏱️ Time taken for question generation: "
+          "${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(2)} s");
+    }
+
     _handleAIResponse(response, userAnswer);
   }
 
-  /// **处理 AI API 响应的通用逻辑**
   void _handleAIResponse(String response, String userText) {
     setState(() {
       messages.removeLast();
@@ -394,6 +430,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
         isErrorState = false;
       }
     });
+    _scrollToBottomAfterBuild();
   }
 
   void _restartChat() {
@@ -415,7 +452,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
     });
 
     SharedPreferences.getInstance().then((prefs) {
-      prefs.remove('chat_history_${widget.filePath}'); // ✅ 清空本地存储
+      prefs.remove('chat_history_${widget.filePath}');
       prefs.remove('startChat_${widget.filePath}');
       prefs.remove('isRetrying_${widget.filePath}');
       prefs.remove('isErrorState_${widget.filePath}');
@@ -431,7 +468,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
     showDialog(
       context: context,
       builder: (context) {
-        TextEditingController memoNameController = TextEditingController(); // ✅ 用户输入 Memo 名称
+        TextEditingController memoNameController = TextEditingController();
 
         return AlertDialog(
           title: const Text("Save Memo"),
@@ -450,7 +487,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
               onPressed: () {
                 String memoName = memoNameController.text.trim();
                 if (memoName.isNotEmpty) {
-                  _saveMemoToS3(memoName); // ✅ 存储 Memo
+                  _saveMemoToS3(memoName);
                   Navigator.pop(context);
                 }
               },
@@ -475,14 +512,12 @@ class _FileDetailPageState extends State<FileDetailPage> {
       }
     }
 
-    // ✅ 格式化 memo 内容
     String memoContent = "";
     for (int i = 0; i < questions.length; i++) {
       memoContent += "**Q: ${questions[i]}**\n";
       memoContent += "A: ${i < answers.length ? answers[i] : "(No answer)"}\n\n";
     }
 
-    // ✅ 存入 S3
     fileManager.saveMemoToS3(memoName, userSub!, memoContent, widget.filePath);
     //isMemoed = true;
     _saveChatHistory();
@@ -504,7 +539,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
     setState(() {
       messages.add({"role": "bot", "content": text, "type": type});
     });
-    Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+    _scrollToBottomAfterBuild();
     _saveChatHistory();
   }
 
@@ -512,7 +547,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
     setState(() {
       messages.add({"role": "user", "content": text, "type": type});
     });
-    Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+    _scrollToBottomAfterBuild();
     _saveChatHistory();
   }
 
@@ -523,9 +558,9 @@ class _FileDetailPageState extends State<FileDetailPage> {
         title: Text("Chatbot"),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh), // ✅ Restart 按钮图标
+            icon: const Icon(Icons.refresh),
             tooltip: "Restart Chat",
-            onPressed: _restartChat, // ✅ 点击后重置聊天
+            onPressed: _restartChat,
           ),
         ],
       ),
@@ -551,7 +586,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 8), // ✅ 添加一点间距
+                          const SizedBox(height: 8),
                           Container(
                             padding: const EdgeInsets.all(12),
                             margin: const EdgeInsets.symmetric(vertical: 6),
@@ -632,7 +667,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
                             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                             margin: const EdgeInsets.symmetric(vertical: 6),
                             constraints: BoxConstraints(
-                              maxWidth: MediaQuery.of(context).size.width * 0.75, // ✅ 限制最大宽度为屏幕 75%
+                              maxWidth: MediaQuery.of(context).size.width * 0.75,
                             ),
                             decoration: BoxDecoration(
                               color: isUser ? Colors.blue[100] : Colors.grey[300],
@@ -666,7 +701,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
                                     softWrap: true,
                                   ),
                                 ),
-                                if (message["showRefresh"]==true) // ✅ 仅 "Generating question..." 时显示 refresh icon
+                                if (message["showRefresh"]==true)
                                   Padding(
                                     padding: const EdgeInsets.only(left: 6),
                                     child: IconButton(
@@ -681,14 +716,14 @@ class _FileDetailPageState extends State<FileDetailPage> {
                       ),
                     ),
 
-                    if (message["retry"] == true) // ✅ 显示 retry 超链接
+                    if (message["retry"] == true)
                       Padding(
                         padding: const EdgeInsets.only(top: 4, left: 6),
                         child: RichText(
                           text: TextSpan(
                             style: const TextStyle(fontSize: 14, color: Colors.black),
                             children: [
-                              const TextSpan(text: "Need a different question? Click to "),
+                              TextSpan(text: (message["type"]=="error") ? "Click to " : "Need a different question? Click to "),
                               TextSpan(
                                 text: "regenerate",
                                 style: const TextStyle(
@@ -734,7 +769,7 @@ class _FileDetailPageState extends State<FileDetailPage> {
                   const SizedBox(width: 8),
                   IconButton(
                   icon: Icon(Icons.send, color: isUserInputEmpty ? Colors.grey : Colors.blue),
-                  onPressed: isUserInputEmpty ? null : _handleEntryInput, // ✅ 绑定 `_handleEntryInput()`
+                  onPressed: isUserInputEmpty ? null : _handleEntryInput,
                   ),
                 ],
               ),
@@ -824,19 +859,17 @@ class _FilePreviewPageState extends State<FilePreviewPage> {
     _determineFileType();
   }
 
-  /// **判断文件类型**
   void _determineFileType() {
     String extension = widget.fileName.split('.').last.toLowerCase();
     if (["jpg", "jpeg", "png"].contains(extension)) {
-      isTextFile = false; // ✅ 图片文件
+      isTextFile = false;
       isLoading = false;
     } else if (["txt", "docx"].contains(extension)) {
-      isTextFile = true; // ✅ 文本文件
-      _fetchTextFile();  // ✅ 读取文本
+      isTextFile = true;
+      _fetchTextFile();
     }
   }
 
-  /// **从 S3 读取文本文件**
   Future<void> _fetchTextFile() async {
     try {
       final result = await Amplify.Storage.getUrl(
@@ -861,7 +894,7 @@ class _FilePreviewPageState extends State<FilePreviewPage> {
     return Scaffold(
       appBar: AppBar(title: Text(widget.fileName)),
       body: isLoading
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(child: CircularProgressIndicator(color: Colors.blue,))
         : isTextFile
         ? SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),

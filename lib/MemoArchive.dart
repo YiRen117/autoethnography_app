@@ -16,7 +16,7 @@ class MemoDetailPage extends StatefulWidget {
 
 class _MemoDetailPageState extends State<MemoDetailPage> {
   String memoContent = "Loading...";
-  List<List<String>> themes = []; // ✅ 存储 [Theme, Description]
+  List<List<String>> themes = [];
   bool isThemeLoading = true;
   bool isPageLoading = true;
   String? backupFilePath, backupFileName, backupFileUrl;
@@ -104,7 +104,6 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
             safePrint("❌ File Url not found in the given path: $e");
           }
 
-          // ✅ 在这里更新状态，确保所有数据已获取后再调用 setState()
           setState(() {
             backupFilePath = backupPath;
             backupFileName = fileName;
@@ -119,7 +118,6 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
     }
   }
 
-  /// **📌 跳转到原文件详情页**
   void _viewOriginalFile() {
     if (backupFilePath != null) {
       Navigator.push(
@@ -169,18 +167,16 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
     return Scaffold(
       appBar: AppBar(title: const Text("Memo Detail")),
       body: isPageLoading
-          ? const Center(child: CircularProgressIndicator()) // ✅ **加载中时，整页 Loading**
+          ? const Center(child: CircularProgressIndicator(color: Colors.blue,))
           : Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ✅ Memo 内容部分
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ✅ Memo 内容
                   const Text(
                     "  Q&A Memo：",
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -201,10 +197,8 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // ✅ 分割线
                   const Divider(thickness: 1),
 
-                  // ✅ Summary 标题
                   const SizedBox(height: 10),
                   const Text(
                     "  Summary:",
@@ -212,7 +206,6 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
                   ),
                   const SizedBox(height: 10),
 
-                  // ✅ 显示 Themes 或 "Analyzing themes..."
                   themes.isEmpty
                       ? const Text(
                     "Themes analyzing...",
@@ -250,14 +243,11 @@ class _MemoDetailPageState extends State<MemoDetailPage> {
             ),
           ),
 
-          // ✅ View Original File 按钮 (保持底部固定)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             child: ElevatedButton(
-              onPressed: () {
-                // TODO: 处理 View Original File
-              },
+              onPressed: _viewOriginalFile,
               child: const Text("View Original File"),
             ),
           ),
